@@ -1,0 +1,20 @@
+{
+  "name": "world-cup-live-analytics",
+  "version": "1.0.0",
+  "description": "Live FIFA World Cup analytics dashboard powered by public match data.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "keywords": [
+    "fifa",
+    "world-cup",
+    "analytics",
+    "dashboard"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}

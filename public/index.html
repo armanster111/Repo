@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FIFA World Cup Live Analytics</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Live match center</p>
+          <h1>FIFA World Cup analytics</h1>
+          <p class="hero-copy">
+            Scores, pressure, possession, shot quality, and discipline update automatically from live match data.
+          </p>
+        </div>
+        <div class="refresh-card">
+          <span id="connectionState" class="state-pill">Connecting</span>
+          <strong id="lastUpdated">--</strong>
+          <span>auto-refreshes every 15s</span>
+        </div>
+      </section>
+
+      <section class="summary-grid" aria-label="Tournament summary">
+        <article>
+          <span>Games tracked</span>
+          <strong id="gamesTracked">0</strong>
+        </article>
+        <article>
+          <span>Live now</span>
+          <strong id="liveNow">0</strong>
+        </article>
+        <article>
+          <span>Total goals</span>
+          <strong id="totalGoals">0</strong>
+        </article>
+        <article>
+          <span>Avg goals</span>
+          <strong id="averageGoals">0.0</strong>
+        </article>
+      </section>
+
+      <section class="dashboard">
+        <aside class="match-list-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Fixtures</p>
+              <h2>World Cup games</h2>
+            </div>
+            <button id="refreshButton" type="button">Refresh</button>
+          </div>
+          <div id="matchList" class="match-list" aria-live="polite"></div>
+        </aside>
+
+        <section id="matchDetail" class="match-detail" aria-live="polite">
+          <div class="empty-state">
+            <h2>Loading live analytics...</h2>
+            <p>Fetching FIFA World Cup game data.</p>
+          </div>
+        </section>
+      </section>
+
+      <p class="source-line" id="sourceLine">Source: ESPN public FIFA World Cup API</p>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
