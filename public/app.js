@@ -66,10 +66,9 @@ function statNumber(team, name) {
   return Number(team.stats?.[name]?.value || 0);
 }
 
-function splitStyle(home, away) {
-  const total = home + away;
-  const homePercent = total > 0 ? Math.round((home / total) * 100) : 50;
-  return `--home: ${homePercent}%; --away: ${100 - homePercent}%`;
+function splitPercent(left, right) {
+  const total = left + right;
+  return total > 0 ? Math.round((left / total) * 100) : 50;
 }
 
 function statusClass(game) {
@@ -231,6 +230,9 @@ function metricCard(label, value, caption) {
 }
 
 function barRow(label, awayValue, homeValue, awayName, homeName, suffix = "") {
+  const awayPercent = splitPercent(awayValue, homeValue);
+  const homePercent = 100 - awayPercent;
+
   return `
     <div class="bar-row">
       <div class="bar-label">
@@ -238,9 +240,9 @@ function barRow(label, awayValue, homeValue, awayName, homeName, suffix = "") {
         <strong>${escapeHtml(label)}</strong>
         <span>${homeValue}${suffix} ${escapeHtml(homeName)}</span>
       </div>
-      <div class="split-bar" style="${splitStyle(awayValue, homeValue)}">
-        <span></span>
-        <span></span>
+      <div class="split-bar">
+        <span style="width: ${awayPercent}%"></span>
+        <span style="width: ${homePercent}%"></span>
       </div>
     </div>
   `;
