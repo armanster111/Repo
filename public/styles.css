@@ -347,7 +347,8 @@ h2 {
 
 .split-bar span {
   display: block;
-  min-width: 0.35rem;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .split-bar span:first-child {

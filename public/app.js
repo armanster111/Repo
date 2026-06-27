@@ -241,8 +241,8 @@ function barRow(label, awayValue, homeValue, awayName, homeName, suffix = "") {
         <span>${homeValue}${suffix} ${escapeHtml(homeName)}</span>
       </div>
       <div class="split-bar">
-        <span style="width: ${awayPercent}%"></span>
-        <span style="width: ${homePercent}%"></span>
+        <span style="width: ${awayPercent}%; flex-basis: ${awayPercent}%"></span>
+        <span style="width: ${homePercent}%; flex-basis: ${homePercent}%"></span>
       </div>
     </div>
   `;
