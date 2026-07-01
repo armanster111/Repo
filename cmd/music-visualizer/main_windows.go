@@ -16,8 +16,10 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
+	"github.com/armanster111/music-visualizer/internal/library"
 	"github.com/armanster111/music-visualizer/internal/lyrics"
 	"github.com/armanster111/music-visualizer/internal/metadata"
+	"github.com/armanster111/music-visualizer/internal/presets"
 	"github.com/armanster111/music-visualizer/internal/visual"
 )
 
@@ -150,6 +152,10 @@ const (
 	modeParticles
 	modeTunnel
 	modePlasma
+	modeAurora
+	modeMandala
+	modeStarfield
+	modeKaleidoscope
 	modeCount
 )
 
@@ -196,6 +202,21 @@ type settings struct {
 	EqMid              int           `json:"eq_mid"`
 	EqTreble           int           `json:"eq_treble"`
 	CustomThemes       []customTheme `json:"custom_themes"`
+	Presets            []presetData  `json:"presets"`
+	PresetIndex        int           `json:"preset_index"`
+	PlayCounts         map[string]int `json:"play_counts"`
+	LastPlayed         map[string]int64 `json:"last_played"`
+	LibraryPaths       []string      `json:"library_paths"`
+	Crossfade          bool          `json:"crossfade"`
+	KaraokeMode        bool          `json:"karaoke_mode"`
+	AmbientMode        bool          `json:"ambient_mode"`
+	OverlayMode        bool          `json:"overlay_mode"`
+	RemoteControl      bool          `json:"remote_control"`
+	AutoPreset         bool          `json:"auto_preset"`
+	DJMode             bool          `json:"dj_mode"`
+	VisualIntensity    float64       `json:"visual_intensity"`
+	PanelGroup         string        `json:"panel_group"`
+	PanelGroupKey      string        `json:"panel_group_key"`
 }
 
 type track struct {
@@ -208,6 +229,19 @@ type button struct {
 	label  string
 	action string
 	bounds rect
+}
+
+type presetData struct {
+	Name               string  `json:"name"`
+	Mode               int     `json:"mode"`
+	Theme              int     `json:"theme"`
+	EqBass             int     `json:"eq_bass"`
+	EqMid              int     `json:"eq_mid"`
+	EqTreble           int     `json:"eq_treble"`
+	DesktopSensitivity float64 `json:"desktop_sensitivity"`
+	VisualIntensity    float64 `json:"visual_intensity"`
+	Karaoke            bool    `json:"karaoke"`
+	Ambient            bool    `json:"ambient"`
 }
 
 type appState struct {
@@ -266,6 +300,37 @@ type appState struct {
 	energyHistory      []float64
 	modeBlend          float64
 	prevMode           visualMode
+	libraryIndex       *library.Index
+	libraryScanning    bool
+	presetIndex        int
+	presets            []presets.Preset
+	overlayHWND        uintptr
+	overlayMode        bool
+	ambientMode        bool
+	karaokeMode        bool
+	showSettings       bool
+	crossfade          bool
+	crossfadeLevel     float64
+	bpm                float64
+	mood               string
+	djMode             bool
+	djCrossfader       float64
+	djDeckBPath        string
+	djDeckBFrames      []visual.Frame
+	remoteEnabled      bool
+	autoPreset         bool
+	visualIntensity    float64
+	playCounts         map[string]int
+	lastPlayed         map[string]int64
+	libraryPaths       []string
+	panelGroup         string
+	panelGroupKey      string
+	panelRow           int
+	volumeSliderBounds rect
+	playlistRowBounds  []rect
+	gifRecording       bool
+	gifFrameCount      int
+	lyricsFetching     bool
 }
 
 var app = &appState{
@@ -275,7 +340,12 @@ var app = &appState{
 	volume:             800,
 	playbackSpeed:      1000,
 	desktopSensitivity: 1.0,
+	visualIntensity:    1.0,
 	favorites:          map[string]bool{},
+	playCounts:         map[string]int{},
+	lastPlayed:         map[string]int64{},
+	djCrossfader:       0.5,
+	crossfadeLevel:     1.0,
 	desktop:            newDesktopInput(),
 }
 
@@ -359,6 +429,7 @@ func main() {
 func run() error {
 	runtime.LockOSThread()
 	app.loadSettings()
+	app.initV2Features()
 
 	instance, _, _ := procGetModuleHandleW.Call(0)
 	className, _ := syscall.UTF16PtrFromString("MusicVisualizerWindow")
@@ -435,10 +506,16 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 	case wmTimer:
 		app.tickSleepTimer()
 		app.maybeAutoDesktop()
+		app.tickCrossfade()
+		app.applyCrossfadeVolume()
+		app.captureGifFrame()
 		if app.modeBlend < 1 {
 			app.modeBlend += 0.1
 		}
 		procInvalidateRect.Call(hwnd, 0, 0)
+		if app.overlayHWND != 0 && app.overlayMode {
+			procInvalidateRect.Call(app.overlayHWND, 0, 0)
+		}
 		return 0
 	case wmEraseBkgnd:
 		return 1
@@ -532,6 +609,42 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 			app.showSearchView()
 		case uintptr(']'):
 			app.cycleDesktopSensitivity()
+		case uintptr('1'):
+			app.toggleOverlay()
+		case uintptr('2'):
+			app.toggleGifRecord()
+		case uintptr('3'):
+			app.toggleSettingsPanel()
+		case uintptr('4'):
+			app.exportSyncBundle()
+		case uintptr('5'):
+			app.importPresets()
+		case uintptr('6'):
+			app.togglePartyMode()
+		case uintptr('7'):
+			app.scanLibraryAsync()
+		case uintptr('8'):
+			app.cyclePreset()
+		case uintptr('9'):
+			app.saveCurrentPreset()
+		case uintptr(','):
+			app.djNudgeCrossfader(-0.1)
+		case uintptr('.'):
+			app.djNudgeCrossfader(0.1)
+		case uintptr(';'):
+			app.loadDJDeckB()
+		case uintptr('\\'):
+			app.cycleLibraryPanel()
+		case uintptr('='):
+			app.toggleCrossfade()
+		case uintptr(')'):
+			app.toggleKaraoke()
+		case uintptr('`'):
+			app.toggleAmbient()
+		case uintptr('~'):
+			app.toggleDJMode()
+		case uintptr('0'):
+			app.toggleAutoPreset()
 		}
 		return 0
 	case wmChar:
@@ -552,6 +665,12 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		return 0
 	case wmLButtonDown:
 		x, y := mousePoint(lParam)
+		if app.handleVolumeSlider(x, y) {
+			return 0
+		}
+		if app.handlePlaylistClick(x, y) {
+			return 0
+		}
 		if app.handleButtonClick(x, y) {
 			return 0
 		}
@@ -581,6 +700,8 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		app.saveWindowBounds()
 		app.removeTray()
 		app.stopDesktopInput()
+		app.closeOverlay()
+		app.stopRemoteControl()
 		closeTrack()
 		procPostQuitMessage.Call(0)
 		return 0
@@ -675,6 +796,7 @@ func (s *appState) loadCurrentTrack(play bool) {
 	s.playbackOffset = 0
 	s.dragPosition = 0
 	s.paused = !play
+	s.bumpPlayCount(path)
 	s.addRecent(path)
 	s.applyVolume()
 	s.applyEqualizer()
@@ -1003,7 +1125,11 @@ func (s *appState) progress() float64 {
 
 func (s *appState) updateStatus() {
 	if s.filePath == "" {
-		s.status = fmt.Sprintf("Open or drag audio. Input:%s | Mode:%s | Theme:%s | Volume:%d%%", s.inputName(), modeName(s.mode), themeName(s.theme), s.volume/10)
+		lib := ""
+		if s.libraryIndex != nil {
+			lib = libraryStatusText(s.libraryScanning, len(s.libraryIndex.Entries)) + " | "
+		}
+		s.status = lib + fmt.Sprintf("Open or drag audio. Input:%s | Mode:%s | Theme:%s | Volume:%d%%", s.inputName(), modeName(s.mode), themeName(s.theme), s.volume/10)
 		return
 	}
 	state := "Playing"
@@ -1016,7 +1142,7 @@ func (s *appState) updateStatus() {
 	if s.favorites[filepath.Clean(s.filePath)] {
 		fav = " *Favorite"
 	}
-	s.status = fmt.Sprintf("%s %s%s  %s/%s  Input:%s  Mode:%s  Theme:%s  Vol:%d%%  Shuffle:%t  Repeat:%s  Sleep:%s",
+	s.status = fmt.Sprintf("%s %s%s  %s/%s  Input:%s  Mode:%s  Theme:%s  Vol:%d%%  Shuffle:%t  Repeat:%s  Sleep:%s  Mood:%s",
 		state,
 		filepath.Base(s.filePath),
 		fav,
@@ -1029,7 +1155,11 @@ func (s *appState) updateStatus() {
 		s.shuffle,
 		repeatName(s.repeat),
 		sleepText(s.sleepMinutes),
+		s.mood,
 	)
+	if dj := djStatusText(s.djMode, s.djCrossfader, s.djDeckBPath); dj != "" {
+		s.status += "  " + dj
+	}
 }
 
 func (s *appState) inputName() string {
@@ -1045,9 +1175,17 @@ func (s *appState) inputName() string {
 }
 
 func (s *appState) targetBars() []float64 {
+	bars := s.rawBars()
+	if s.djMode {
+		bars = s.mixDJBars(bars)
+	}
+	return s.applyVisualEQ(bars)
+}
+
+func (s *appState) rawBars() []float64 {
 	if s.desktopMode && s.desktop != nil && s.desktop.isActive() {
-		if bars := s.desktop.snapshot(); len(bars) > 0 {
-			return bars
+		if snap := s.desktop.snapshot(); len(snap) > 0 {
+			return snap
 		}
 	}
 	if len(s.frames) == 0 {
@@ -1061,7 +1199,6 @@ func (s *appState) targetBars() []float64 {
 		s.updateStatus()
 		return s.frames[len(s.frames)-1].Bars
 	}
-
 	index := int(pos.Seconds() * fps)
 	if index < 0 {
 		index = 0
@@ -1165,18 +1302,29 @@ func drawFrame(hdc uintptr, width, height int32) {
 		} else {
 			textOut(hdc, 28, 52, app.status)
 		}
-		textOut(hdc, 28, height-30, "O open | I desktop | V viz | G theme | U recent | Y favorites | / search | Z visual-only | J speed | K EQ")
+		textOut(hdc, 28, height-30, "O open | 1 overlay | 3 settings | 7 library | 8 preset | \\ panels | 0 auto-preset")
 		drawButtons(hdc, width, height)
+		app.drawVolumeSlider(hdc, width, height, palette)
 		drawPlaylist(hdc, width, height)
+		app.drawSettingsPanel(hdc, width, height, palette)
+	}
+	if line := app.karaokeLine(); line != "" && !app.visualOnly {
+		procSetTextColor.Call(hdc, palette.accent2)
+		textOut(hdc, 28, height-52, line)
 	}
 	if !app.visualOnly {
 		drawProgress(hdc, width, height, palette)
 	}
 
 	bars := app.targetBars()
+	app.updateAnalysis(bars)
 	beat := app.beatMultiplier(bars)
+	intensity := app.visualIntensity
+	if app.ambientMode {
+		intensity *= 0.65
+	}
 	for i := range bars {
-		bars[i] = math.Min(1, bars[i]*beat)
+		bars[i] = math.Min(1, bars[i]*beat*intensity)
 	}
 	if len(app.currentBars) != len(bars) {
 		app.currentBars = make([]float64, len(bars))
@@ -1199,6 +1347,9 @@ func drawFrame(hdc uintptr, width, height int32) {
 	smooth := 0.35
 	if app.modeBlend < 1 {
 		smooth = 0.18
+	}
+	if app.ambientMode {
+		smooth = 0.12
 	}
 	for i, target := range bars {
 		app.currentBars[i] += (target - app.currentBars[i]) * smooth
@@ -1226,6 +1377,14 @@ func drawVisualization(hdc uintptr, bounds rect, bars []float64, mode visualMode
 		drawTunnel(hdc, bounds, bars)
 	case modePlasma:
 		drawPlasma(hdc, bounds, bars)
+	case modeAurora:
+		drawAurora(hdc, bounds, bars)
+	case modeMandala:
+		drawMandala(hdc, bounds, bars)
+	case modeStarfield:
+		drawStarfield(hdc, bounds, bars)
+	case modeKaleidoscope:
+		drawKaleidoscope(hdc, bounds, bars)
 	default:
 		drawClassicBars(hdc, bounds, bars)
 	}
@@ -1479,13 +1638,13 @@ func drawButtons(hdc uintptr, width, height int32) {
 		{label: "Viz", action: "viz"},
 		{label: inputLabel(), action: "input"},
 		{label: "Theme", action: "theme"},
-		{label: "Shuffle", action: "shuffle"},
-		{label: "Repeat", action: "repeat"},
+		{label: "Lib", action: "library"},
+		{label: "Preset", action: "preset"},
+		{label: "OBS", action: "overlay"},
+		{label: "DJ", action: "dj"},
+		{label: "Set", action: "settings"},
 		{label: "Fav", action: "favorite"},
 		{label: "Mute", action: "mute"},
-		{label: "Speed", action: "speed"},
-		{label: "Recent", action: "recent"},
-		{label: "Favs", action: "favs"},
 	}
 	app.buttons = app.buttons[:0]
 	palette := currentPalette()
@@ -1509,7 +1668,16 @@ func drawButtons(hdc uintptr, width, height int32) {
 
 func drawPlaylist(hdc uintptr, width, height int32) {
 	list := app.filteredPlaylist()
-	if len(list) == 0 && app.panel == viewQueue {
+	groups := app.libraryGroupsForPanel()
+	entries := app.libraryEntriesForPanel()
+	count := len(list)
+	if count == 0 {
+		count = len(groups)
+	}
+	if count == 0 {
+		count = len(entries)
+	}
+	if count == 0 && app.panel == viewQueue {
 		return
 	}
 	palette := currentPalette()
@@ -1518,18 +1686,45 @@ func drawPlaylist(hdc uintptr, width, height int32) {
 		return
 	}
 	top := int32(128)
-	fill(hdc, rect{left: left, top: top, right: width - 28, bottom: height - 104}, dimColor(palette.panel, 0.75))
+	panel := rect{left: left, top: top, right: width - 28, bottom: height - 104}
+	fill(hdc, panel, dimColor(palette.panel, 0.75))
 	procSetTextColor.Call(hdc, palette.text)
-	textOut(hdc, left+12, top+10, fmt.Sprintf("%s (%d)", app.panelTitle(), len(list)))
+	textOut(hdc, left+12, top+10, fmt.Sprintf("%s (%d)", app.panelTitle(), count))
+	app.playlistRowBounds = app.playlistRowBounds[:0]
 	procSetTextColor.Call(hdc, palette.dim)
+	if len(groups) > 0 && app.panelGroupKey == "" {
+		for row := 0; row < 8 && row < len(groups); row++ {
+			y := top + 38 + int32(row*24)
+			rowRect := rect{left: left + 8, top: y - 4, right: width - 36, bottom: y + 18}
+			app.playlistRowBounds = append(app.playlistRowBounds, rowRect)
+			textOut(hdc, left+12, y, truncate(groups[row], 34))
+		}
+		return
+	}
+	if len(entries) > 0 && app.panel >= viewLibrary {
+		for row := 0; row < 8 && row < len(entries); row++ {
+			e := entries[row]
+			y := top + 38 + int32(row*24)
+			rowRect := rect{left: left + 8, top: y - 4, right: width - 36, bottom: y + 18}
+			app.playlistRowBounds = append(app.playlistRowBounds, rowRect)
+			label := e.Title
+			if e.PlayCount > 0 {
+				label = fmt.Sprintf("%s (%d)", truncate(e.Title, 26), e.PlayCount)
+			}
+			textOut(hdc, left+12, y, truncate(label, 34))
+		}
+		return
+	}
 	for row := 0; row < 8 && row < len(list); row++ {
 		t := list[row]
-		procSetTextColor.Call(hdc, palette.dim)
+		y := top + 38 + int32(row*24)
+		rowRect := rect{left: left + 8, top: y - 4, right: width - 36, bottom: y + 18}
+		app.playlistRowBounds = append(app.playlistRowBounds, rowRect)
 		fav := ""
 		if t.Favorite {
 			fav = "* "
 		}
-		textOut(hdc, left+12, top+38+int32(row*24), truncate(fav+t.Title, 34))
+		textOut(hdc, left+12, y, truncate(fav+t.Title, 34))
 	}
 }
 
@@ -1553,6 +1748,17 @@ func (s *appState) handleButtonClick(x, y int32) bool {
 				s.toggleDesktopInput()
 			case "theme":
 				s.nextTheme()
+			case "library":
+				s.scanLibraryAsync()
+				s.showLibraryView()
+			case "preset":
+				s.cyclePreset()
+			case "overlay":
+				s.toggleOverlay()
+			case "dj":
+				s.toggleDJMode()
+			case "settings":
+				s.toggleSettingsPanel()
 			case "shuffle":
 				s.toggleShuffle()
 			case "repeat":
@@ -1697,6 +1903,29 @@ func (s *appState) loadSettings() {
 	s.eqMid = cfg.EqMid
 	s.eqTreble = cfg.EqTreble
 	s.customThemes = cfg.CustomThemes
+	s.presetIndex = cfg.PresetIndex
+	s.presetsFromSettings(cfg.Presets)
+	if cfg.VisualIntensity > 0 {
+		s.visualIntensity = cfg.VisualIntensity
+	}
+	s.playCounts = cfg.PlayCounts
+	if s.playCounts == nil {
+		s.playCounts = map[string]int{}
+	}
+	s.lastPlayed = cfg.LastPlayed
+	if s.lastPlayed == nil {
+		s.lastPlayed = map[string]int64{}
+	}
+	s.libraryPaths = cfg.LibraryPaths
+	s.crossfade = cfg.Crossfade
+	s.karaokeMode = cfg.KaraokeMode
+	s.ambientMode = cfg.AmbientMode
+	s.overlayMode = cfg.OverlayMode
+	s.autoPreset = cfg.AutoPreset
+	s.djMode = cfg.DJMode
+	if cfg.RemoteControl {
+		s.startRemoteControl()
+	}
 	for _, fav := range cfg.Favorites {
 		s.favorites[filepath.Clean(fav)] = true
 	}
@@ -1726,6 +1955,19 @@ func (s *appState) saveSettings() {
 		EqMid:              s.eqMid,
 		EqTreble:           s.eqTreble,
 		CustomThemes:       s.customThemes,
+		Presets:            s.presetsToSettings(),
+		PresetIndex:        s.presetIndex,
+		PlayCounts:         s.playCounts,
+		LastPlayed:         s.lastPlayed,
+		LibraryPaths:       s.libraryPaths,
+		Crossfade:          s.crossfade,
+		KaraokeMode:        s.karaokeMode,
+		AmbientMode:        s.ambientMode,
+		OverlayMode:        s.overlayMode,
+		RemoteControl:      s.remoteEnabled,
+		AutoPreset:         s.autoPreset,
+		DJMode:             s.djMode,
+		VisualIntensity:    s.visualIntensity,
 	}
 	for fav, ok := range s.favorites {
 		if ok {
@@ -2008,6 +2250,14 @@ func modeName(mode visualMode) string {
 		return "Tunnel"
 	case modePlasma:
 		return "Plasma"
+	case modeAurora:
+		return "Aurora"
+	case modeMandala:
+		return "Mandala"
+	case modeStarfield:
+		return "Starfield"
+	case modeKaleidoscope:
+		return "Kaleidoscope"
 	default:
 		return "Classic"
 	}

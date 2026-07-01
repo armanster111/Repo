@@ -24,6 +24,10 @@ const (
 	viewRecent
 	viewFavorites
 	viewSearch
+	viewLibrary
+	viewAlbums
+	viewArtists
+	viewSmart
 )
 
 type customTheme struct {
@@ -47,6 +51,7 @@ func (s *appState) loadTrackMedia(path string) {
 	s.meta = trackMeta{Title: info.Title, Artist: info.Artist, Album: info.Album}
 	s.lyricLines = lyrics.Load(path)
 	s.artGrid = metadata.ArtGridFromBytes(art, 12, 8)
+	s.fetchLyricsAsync()
 }
 
 func (s *appState) buildFramesForPath(path string) ([]visual.Frame, time.Duration) {
@@ -227,7 +232,7 @@ func (s *appState) showOnboardingIfNeeded() {
 	s.seenOnboarding = true
 	s.saveSettings()
 	showMessage(s.hwnd, appTitle+" Pro",
-		"Welcome!\n\nO open audio | I desktop input | V visualizer | G theme\nU recent | Y favorites | / search | Z visual-only\nJ speed | K EQ band | H save custom theme\n\nPlay music on Windows, press I, and enjoy.",
+		"Welcome to Music Visualizer Pro v2!\n\nLibrary scan starts automatically.\n1 OBS overlay | 3 settings | 7 rescan library\n8 cycle preset | 9 save preset | 6 party mode\nRemote control: http://localhost:8765\n\nO open | I desktop | V viz | Z visual-only",
 		0)
 }
 
@@ -302,6 +307,8 @@ func (s *appState) panelTitle() string {
 		return "Favorites"
 	case viewSearch:
 		return "Search: " + s.searchQuery
+	case viewLibrary, viewAlbums, viewArtists, viewSmart:
+		return s.libraryPanelTitle()
 	default:
 		return "Queue"
 	}

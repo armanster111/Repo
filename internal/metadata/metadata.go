@@ -17,6 +17,7 @@ type TrackInfo struct {
 	Title  string
 	Artist string
 	Album  string
+	Genre  string
 }
 
 // ArtGrid is a low-resolution color grid for blurred album-art backgrounds.
@@ -43,6 +44,7 @@ func Read(path string) (TrackInfo, []byte, error) {
 		Title:  firstNonEmpty(m.Title(), strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))),
 		Artist: m.Artist(),
 		Album:  m.Album(),
+		Genre:  m.Genre(),
 	}
 	picture := m.Picture()
 	if picture == nil {

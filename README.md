@@ -1,65 +1,114 @@
 # Music Visualizer Pro
 
-A native Windows music player and visualizer with playlists, MP3/WAV playback, desktop audio capture, themes, lyrics, album-art backgrounds, and track seeking.
+A native Windows music player and visualizer with playlists, MP3/WAV playback, desktop audio capture, themes, lyrics, album-art backgrounds, library scanning, presets, OBS overlay, DJ mode, and remote control.
 
 ## Quick start (Windows)
 
 1. Download **`MusicVisualizerPro-Windows.zip`**
-2. Extract it anywhere (Downloads, Desktop, etc.)
+2. Extract it anywhere
 3. Double-click **`MusicVisualizerPro.exe`**
 
-No Go install. No build step. No separate installer required.
-
-Direct download (latest branch build):
+Direct download:
 
 - ZIP: `https://github.com/armanster111/Repo/raw/cursor/music-visualizer-exe-7b99/dist/MusicVisualizerPro-Windows.zip`
 - EXE: `https://github.com/armanster111/Repo/raw/cursor/music-visualizer-exe-7b99/dist/MusicVisualizerPro.exe`
 
-Optional: run `install-windows.bat` to copy the app into `%LOCALAPPDATA%\MusicVisualizerPro` and create a Desktop shortcut.
+If Windows SmartScreen warns about an unsigned app, choose **More info → Run anyway**.
 
-If Windows SmartScreen warns about an unsigned app, choose **More info** → **Run anyway**. See `docs/CODE_SIGNING.md` if you want to sign releases yourself.
+## v2 features
 
-## What it does
+### Music library
+- Auto-scans `Music`, `Downloads`, and your last playlist folder on startup
+- **Library / Artists / Albums / Top Played** panels (`\` cycles views, **Lib** button)
+- Click tracks in the right panel to play
+- Play counts saved and used for smart "Top Played" list
 
-- Opens or drag-drops audio files and folders.
-- Plays Windows-supported audio through MCI, including `.wav`, `.mp3`, `.wma`, `.mid`, `.aiff`, `.au`, and `.snd`.
-- Decodes **MP3 and WAV** for real waveform visualizers.
-- **Desktop Input mode** listens to default Windows speaker output (WASAPI loopback).
-- Builds a queue from folders with **search**, **recent**, and **favorites** views.
-- Shows **album art** as a blurred background and **`.lrc` lyrics** when available.
-- Includes ten visualizer modes with **beat pulse** and **bass/mid/treble** coloring.
-- Includes built-in themes plus up to **5 saved custom themes** (`H`).
-- **System tray** icon for quick access.
-- **Equalizer** bass/treble via Windows MCI (`K` cycles bands).
-- **Playback speed** control (`J`).
-- **Visual-only fullscreen** mode (`Z`).
-- Remembers window size/position and settings in `%APPDATA%\MusicVisualizerPro\settings.json`.
+### Visualizers (14 modes)
+Classic, Mirror, Blocks, Wave, Halo, Spectrum, Fire, Particles, Tunnel, Plasma, **Aurora**, **Mandala**, **Starfield**, **Kaleidoscope**
+
+### Presets & plugin packs
+- **8** cycle preset | **9** save preset | **5** import from Desktop
+- Presets saved to `%APPDATA%\MusicVisualizerPro\presets.json`
+- Drop JSON packs in `%APPDATA%\MusicVisualizerPro\packs\`
+- **0** auto-preset (mood-based switching)
+
+### Lyrics
+- Local `.lrc` sidecar files
+- **Auto-fetch** synced lyrics online (LRCLIB) when a track loads
+- **)** toggle karaoke overlay
+
+### Streamer / OBS
+- **1** toggle semi-transparent topmost overlay window (visualizer only)
+- **2** streamer frame capture notes
+- **6** party mode (kaleidoscope + karaoke + boosted visuals)
+
+### Audio enhancements
+- Software 3-band visual EQ (bass/mid/treble affects bars)
+- **=** crossfade between tracks
+- BPM + mood detection in status line
+
+### DJ mode
+- **~** toggle DJ mode
+- **;** load current track to deck B
+- **,** / **.** move crossfader
+
+### Remote control
+- Open **http://localhost:8765** on your PC or phone (same Wi‑Fi)
+- Play/pause/next/prev from browser
+- **4** export sync bundle (favorites, presets, play counts) to Desktop
+
+### UI
+- **3** settings panel
+- Clickable playlist rows
+- Volume slider (top right)
+- **`** ambient mode (slow, dim fullscreen visuals)
+
+## Core features
+
+- Opens or drag-drops audio files and folders
+- Plays `.wav`, `.mp3`, `.wma`, `.mid`, `.aiff`, `.au`, `.snd`, `.flac`, `.ogg` (library scan)
+- **Desktop Input** — WASAPI loopback from Windows speakers (**I**)
+- Playlists, shuffle, repeat, favorites, recent, search
+- Album art blurred background, `.lrc` lyrics
+- Built-in themes + 5 custom saved themes (**H**)
+- System tray, EQ, playback speed, visual-only fullscreen
+- Settings in `%APPDATA%\MusicVisualizerPro\settings.json`
 
 ## Keyboard shortcuts
 
-- `O` open audio | drag/drop files or folders
-- `Space` pause/play | `B`/`N` previous/next
-- `V` visualizer | `G` theme | `H` save custom theme
-- `I` desktop input | `A` auto desktop when idle | `]` sensitivity | `W` output device
-- `U` recent | `Y` favorites | `/` search (type to filter)
-- `P` shuffle | `Q` repeat | `F` favorite | `D` folder playlist
-- `M` mute | `Up`/`Down` volume | `Left`/`Right` seek | `T` seek jump size
-- `J` playback speed | `K` EQ band | `R` restart | `S` sleep timer
-- `C` snapshot | `X` mini | `Z` visual-only | `F11`/`L` fullscreen
-- `Esc` quit
+| Key | Action |
+|-----|--------|
+| `O` | Open file |
+| `Space` | Play/pause |
+| `V` | Cycle visualizer |
+| `G` | Next theme |
+| `I` | Desktop input |
+| `1` | OBS overlay |
+| `2` | Streamer capture |
+| `3` | Settings panel |
+| `6` | Party mode |
+| `7` | Rescan library |
+| `8` / `9` | Cycle / save preset |
+| `0` | Auto-preset |
+| `\` | Cycle library panels |
+| `)` | Karaoke lyrics |
+| `` ` `` | Ambient mode |
+| `~` | DJ mode |
+| `=` | Crossfade |
+| `,` / `.` | DJ crossfader |
+| `;` | Load DJ deck B |
+| `U` / `Y` / `/` | Recent / favorites / search |
+| `Z` | Visual-only |
+| `Esc` | Quit |
 
 ## Build from source (optional)
 
-Only needed if you want to modify the code:
-
-1. Install [Go](https://go.dev/dl/)
-2. Run `build-windows.bat`
-3. Open `dist\MusicVisualizerPro.exe`
-
-CI also rebuilds the standalone `.exe` on every push via `.github/workflows/windows-release.yml`.
+```bat
+build-windows.bat
+```
 
 ## Notes
 
-- MP3/WAV get real waveform analysis; other formats still play through Windows and use animated visualizers.
-- Desktop input visualizes whatever your PC is playing (YouTube, Spotify, games, etc.).
-- Place a matching `.lrc` file next to a song for synced lyrics.
+- MP3/WAV get real waveform analysis; other formats use animated visualizers via MCI playback
+- Desktop input visualizes Spotify, YouTube, games, etc.
+- Place a matching `.lrc` next to a song for offline synced lyrics
