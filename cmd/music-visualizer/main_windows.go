@@ -26,9 +26,6 @@ const (
 	fps      = 30
 	barCount = 48
 
-	csHRedraw = 0x0002
-	csVRedraw = 0x0001
-
 	cwUseDefault       = 0x80000000
 	wsOverlappedWindow = 0x00cf0000
 
@@ -36,9 +33,10 @@ const (
 	swShowNormal    = 1
 	swShowMaximized = 3
 
-	wmDestroy     = 0x0002
-	wmPaint       = 0x000f
-	wmTimer       = 0x0113
+	wmDestroy      = 0x0002
+	wmEraseBkgnd   = 0x0014
+	wmPaint        = 0x000f
+	wmTimer        = 0x0113
 	wmKeyDown     = 0x0100
 	wmChar        = 0x0102
 	wmCreate      = 0x0001
@@ -70,6 +68,7 @@ const (
 	timerID = 1
 
 	transparent = 1
+	srccopy     = 0x00CC0020
 
 	ofnPathMustExist = 0x00000800
 	ofnFileMustExist = 0x00001000
@@ -114,8 +113,12 @@ var (
 	procTranslateMessage    = user32.NewProc("TranslateMessage")
 	procUpdateWindow        = user32.NewProc("UpdateWindow")
 
+	procBitBlt               = gdi32.NewProc("BitBlt")
+	procCreateCompatibleBitmap = gdi32.NewProc("CreateCompatibleBitmap")
+	procCreateCompatibleDC   = gdi32.NewProc("CreateCompatibleDC")
 	procCreatePen        = gdi32.NewProc("CreatePen")
 	procCreateSolidBrush = gdi32.NewProc("CreateSolidBrush")
+	procDeleteDC         = gdi32.NewProc("DeleteDC")
 	procDeleteObject     = gdi32.NewProc("DeleteObject")
 	procEllipse          = gdi32.NewProc("Ellipse")
 	procLineTo           = gdi32.NewProc("LineTo")
@@ -364,7 +367,6 @@ func run() error {
 
 	wc := wndClassEx{
 		size:      uint32(unsafe.Sizeof(wndClassEx{})),
-		style:     csHRedraw | csVRedraw,
 		wndProc:   syscall.NewCallback(wndProc),
 		instance:  instance,
 		cursor:    cursor,
@@ -438,6 +440,8 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		}
 		procInvalidateRect.Call(hwnd, 0, 0)
 		return 0
+	case wmEraseBkgnd:
+		return 1
 	case wmKeyDown:
 		switch wParam {
 		case vkEscape:
@@ -1118,23 +1122,49 @@ func draw(hwnd uintptr) {
 
 	width := bounds.right - bounds.left
 	height := bounds.bottom - bounds.top
+	if width <= 0 || height <= 0 {
+		return
+	}
+
+	memDC, _, _ := procCreateCompatibleDC.Call(hdc)
+	if memDC == 0 {
+		return
+	}
+	defer procDeleteDC.Call(memDC)
+
+	bitmap, _, _ := procCreateCompatibleBitmap.Call(hdc, uintptr(width), uintptr(height))
+	if bitmap == 0 {
+		return
+	}
+	defer procDeleteObject.Call(bitmap)
+
+	oldBitmap, _, _ := procSelectObject.Call(memDC, bitmap)
+	defer procSelectObject.Call(memDC, oldBitmap)
+
+	drawFrame(memDC, width, height)
+	procBitBlt.Call(hdc, 0, 0, uintptr(width), uintptr(height), memDC, 0, 0, srccopy)
+}
+
+func drawFrame(hdc uintptr, width, height int32) {
 	palette := currentPalette()
-	fill(hdc, bounds, palette.background)
+	fill(hdc, rect{left: 0, top: 0, right: width, bottom: height}, palette.background)
 
 	procSetBkMode.Call(hdc, transparent)
 	procSetTextColor.Call(hdc, palette.text)
 	textOut(hdc, 28, 24, appTitle+" Pro")
 	if !app.mini && !app.visualOnly {
 		procSetTextColor.Call(hdc, palette.dim)
-		metaLine := app.status
-		if app.meta.Title != "" {
-			metaLine = fmt.Sprintf("%s — %s", app.meta.Title, app.meta.Artist)
+		hasMeta := app.meta.Title != ""
+		if hasMeta {
+			metaLine := fmt.Sprintf("%s — %s", app.meta.Title, app.meta.Artist)
 			if line := app.currentLyric(); line != "" {
 				metaLine += " | " + line
 			}
+			textOut(hdc, 28, 52, metaLine)
+			textOut(hdc, 28, 68, app.status)
+		} else {
+			textOut(hdc, 28, 52, app.status)
 		}
-		textOut(hdc, 28, 52, metaLine)
-		textOut(hdc, 28, 68, app.status)
 		textOut(hdc, 28, height-30, "O open | I desktop | V viz | G theme | U recent | Y favorites | / search | Z visual-only | J speed | K EQ")
 		drawButtons(hdc, width, height)
 		drawPlaylist(hdc, width, height)
@@ -2066,7 +2096,7 @@ func escapeMCI(path string) string {
 
 func invalidate() {
 	if app.hwnd != 0 {
-		procInvalidateRect.Call(app.hwnd, 0, 1)
+		procInvalidateRect.Call(app.hwnd, 0, 0)
 	}
 }
 
