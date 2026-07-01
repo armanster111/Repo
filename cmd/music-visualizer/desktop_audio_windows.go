@@ -62,15 +62,30 @@ type waveFormat struct {
 }
 
 type desktopInput struct {
-	mu      sync.RWMutex
-	bars    []float64
-	active  bool
-	lastErr error
-	stop    chan struct{}
+	mu          sync.RWMutex
+	bars        []float64
+	active      bool
+	lastErr     error
+	stop        chan struct{}
+	sensitivity float64
+	deviceIndex int
 }
 
 func newDesktopInput() *desktopInput {
-	return &desktopInput{bars: make([]float64, barCount)}
+	return &desktopInput{bars: make([]float64, barCount), sensitivity: 1.0}
+}
+
+func (d *desktopInput) setSensitivity(v float64) {
+	d.mu.Lock()
+	d.sensitivity = v
+	d.mu.Unlock()
+}
+
+func (d *desktopInput) setDeviceIndex(idx int) error {
+	d.mu.Lock()
+	d.deviceIndex = idx
+	d.mu.Unlock()
+	return nil
 }
 
 func (d *desktopInput) start() error {
@@ -268,7 +283,7 @@ func (d *desktopInput) updateBars(samples []float64) {
 			for _, sample := range samples[start:end] {
 				sum += sample * sample
 			}
-			target[i] = math.Min(1, math.Sqrt(sum/float64(end-start))*3.2)
+			target[i] = math.Min(1, math.Sqrt(sum/float64(end-start))*3.2*d.sensitivity)
 		}
 		normalizeLiveBars(target)
 	}

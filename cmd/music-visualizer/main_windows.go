@@ -16,8 +16,9 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
+	"github.com/armanster111/music-visualizer/internal/lyrics"
+	"github.com/armanster111/music-visualizer/internal/metadata"
 	"github.com/armanster111/music-visualizer/internal/visual"
-	"github.com/armanster111/music-visualizer/internal/wav"
 )
 
 const (
@@ -39,6 +40,7 @@ const (
 	wmPaint       = 0x000f
 	wmTimer       = 0x0113
 	wmKeyDown     = 0x0100
+	wmChar        = 0x0102
 	wmCreate      = 0x0001
 	wmMouseMove   = 0x0200
 	wmLButtonDown = 0x0201
@@ -87,26 +89,30 @@ var (
 	shell32  = syscall.NewLazyDLL("shell32.dll")
 	winmm    = syscall.NewLazyDLL("winmm.dll")
 
-	procBeginPaint       = user32.NewProc("BeginPaint")
-	procCreateWindowExW  = user32.NewProc("CreateWindowExW")
-	procDefWindowProcW   = user32.NewProc("DefWindowProcW")
-	procDestroyWindow    = user32.NewProc("DestroyWindow")
-	procDispatchMessageW = user32.NewProc("DispatchMessageW")
-	procEndPaint         = user32.NewProc("EndPaint")
-	procFillRect         = user32.NewProc("FillRect")
-	procGetClientRect    = user32.NewProc("GetClientRect")
-	procGetMessageW      = user32.NewProc("GetMessageW")
-	procInvalidateRect   = user32.NewProc("InvalidateRect")
-	procLoadCursorW      = user32.NewProc("LoadCursorW")
-	procMessageBoxW      = user32.NewProc("MessageBoxW")
-	procPostQuitMessage  = user32.NewProc("PostQuitMessage")
-	procRegisterClassExW = user32.NewProc("RegisterClassExW")
-	procReleaseCapture   = user32.NewProc("ReleaseCapture")
-	procSetCapture       = user32.NewProc("SetCapture")
-	procSetTimer         = user32.NewProc("SetTimer")
-	procShowWindow       = user32.NewProc("ShowWindow")
-	procTranslateMessage = user32.NewProc("TranslateMessage")
-	procUpdateWindow     = user32.NewProc("UpdateWindow")
+	procBeginPaint          = user32.NewProc("BeginPaint")
+	procCreateWindowExW     = user32.NewProc("CreateWindowExW")
+	procDefWindowProcW      = user32.NewProc("DefWindowProcW")
+	procDestroyWindow       = user32.NewProc("DestroyWindow")
+	procDispatchMessageW    = user32.NewProc("DispatchMessageW")
+	procEndPaint            = user32.NewProc("EndPaint")
+	procFillRect            = user32.NewProc("FillRect")
+	procGetClientRect       = user32.NewProc("GetClientRect")
+	procGetMessageW         = user32.NewProc("GetMessageW")
+	procInvalidateRect      = user32.NewProc("InvalidateRect")
+	procLoadCursorW         = user32.NewProc("LoadCursorW")
+	procMessageBoxW         = user32.NewProc("MessageBoxW")
+	procPostQuitMessage     = user32.NewProc("PostQuitMessage")
+	procRegisterClassExW    = user32.NewProc("RegisterClassExW")
+	procReleaseCapture      = user32.NewProc("ReleaseCapture")
+	procSetCapture          = user32.NewProc("SetCapture")
+	procSetTimer            = user32.NewProc("SetTimer")
+	procGetWindowRect       = user32.NewProc("GetWindowRect")
+	procLoadIconW           = user32.NewProc("LoadIconW")
+	procSetForegroundWindow = user32.NewProc("SetForegroundWindow")
+	procSetWindowPos        = user32.NewProc("SetWindowPos")
+	procShowWindow          = user32.NewProc("ShowWindow")
+	procTranslateMessage    = user32.NewProc("TranslateMessage")
+	procUpdateWindow        = user32.NewProc("UpdateWindow")
 
 	procCreatePen        = gdi32.NewProc("CreatePen")
 	procCreateSolidBrush = gdi32.NewProc("CreateSolidBrush")
@@ -151,7 +157,8 @@ const (
 	themeLava
 	themeCyberpunk
 	themeOcean
-	themeCount
+	themeCustomBase
+	themeCount = themeCustomBase + 5
 )
 
 type repeatMode int
@@ -163,16 +170,29 @@ const (
 )
 
 type settings struct {
-	Mode         visualMode `json:"mode"`
-	Theme        theme      `json:"theme"`
-	Volume       int        `json:"volume"`
-	Muted        bool       `json:"muted"`
-	DesktopInput bool       `json:"desktop_input"`
-	Repeat       repeatMode `json:"repeat"`
-	Shuffle      bool       `json:"shuffle"`
-	Recent       []string   `json:"recent"`
-	Favorites    []string   `json:"favorites"`
-	LibraryRoot  string     `json:"library_root"`
+	Mode               visualMode    `json:"mode"`
+	Theme              theme         `json:"theme"`
+	Volume             int           `json:"volume"`
+	Muted              bool          `json:"muted"`
+	DesktopInput       bool          `json:"desktop_input"`
+	DesktopAuto        bool          `json:"desktop_auto"`
+	DesktopSensitivity float64       `json:"desktop_sensitivity"`
+	DesktopDevice      int           `json:"desktop_device"`
+	Repeat             repeatMode    `json:"repeat"`
+	Shuffle            bool          `json:"shuffle"`
+	Recent             []string      `json:"recent"`
+	Favorites          []string      `json:"favorites"`
+	LibraryRoot        string        `json:"library_root"`
+	SeenOnboarding     bool          `json:"seen_onboarding"`
+	WindowX            int32         `json:"window_x"`
+	WindowY            int32         `json:"window_y"`
+	WindowW            int32         `json:"window_w"`
+	WindowH            int32         `json:"window_h"`
+	PlaybackSpeed      int           `json:"playback_speed"`
+	EqBass             int           `json:"eq_bass"`
+	EqMid              int           `json:"eq_mid"`
+	EqTreble           int           `json:"eq_treble"`
+	CustomThemes       []customTheme `json:"custom_themes"`
 }
 
 type track struct {
@@ -188,47 +208,72 @@ type button struct {
 }
 
 type appState struct {
-	hwnd           uintptr
-	filePath       string
-	status         string
-	frames         []visual.Frame
-	currentBars    []float64
-	ambientSeed    float64
-	duration       time.Duration
-	startedAt      time.Time
-	playbackOffset time.Duration
-	dragPosition   time.Duration
-	mode           visualMode
-	theme          theme
-	playlist       []track
-	currentIndex   int
-	recent         []string
-	favorites      map[string]bool
-	buttons        []button
-	desktop        *desktopInput
-	libraryRoot    string
-	volume         int
-	sleepMinutes   int
-	sleepStartedAt time.Time
-	repeat         repeatMode
-	seekLarge      bool
-	shuffle        bool
-	muted          bool
-	desktopMode    bool
-	fullscreen     bool
-	mini           bool
-	playing        bool
-	paused         bool
-	dragging       bool
+	hwnd               uintptr
+	filePath           string
+	status             string
+	frames             []visual.Frame
+	currentBars        []float64
+	ambientSeed        float64
+	duration           time.Duration
+	startedAt          time.Time
+	playbackOffset     time.Duration
+	dragPosition       time.Duration
+	mode               visualMode
+	theme              theme
+	playlist           []track
+	currentIndex       int
+	recent             []string
+	favorites          map[string]bool
+	buttons            []button
+	desktop            *desktopInput
+	libraryRoot        string
+	volume             int
+	sleepMinutes       int
+	sleepStartedAt     time.Time
+	repeat             repeatMode
+	seekLarge          bool
+	shuffle            bool
+	muted              bool
+	desktopMode        bool
+	fullscreen         bool
+	mini               bool
+	playing            bool
+	paused             bool
+	dragging           bool
+	panel              panelView
+	searchQuery        string
+	visualOnly         bool
+	seenOnboarding     bool
+	windowX            int32
+	windowY            int32
+	windowW            int32
+	windowH            int32
+	playbackSpeed      int
+	eqBass             int
+	eqMid              int
+	eqTreble           int
+	eqFocus            int
+	desktopSensitivity float64
+	desktopAuto        bool
+	desktopDevice      int
+	customThemes       []customTheme
+	meta               trackMeta
+	lyricLines         []lyrics.Line
+	artGrid            *metadata.ArtGrid
+	energyHistory      []float64
+	modeBlend          float64
+	prevMode           visualMode
 }
 
 var app = &appState{
-	status:       "Open or drag audio here. MP3/WAV playback, playlists, themes, and visualizers are ready.",
-	currentIndex: -1,
-	theme:        themeNeon,
-	volume:       800,
-	favorites:    map[string]bool{},
-	desktop:      newDesktopInput(),
+	status:             "Open or drag audio here. MP3/WAV playback, playlists, themes, and visualizers are ready.",
+	currentIndex:       -1,
+	theme:              themeNeon,
+	volume:             800,
+	playbackSpeed:      1000,
+	desktopSensitivity: 1.0,
+	favorites:          map[string]bool{},
+	desktop:            newDesktopInput(),
 }
 
 type point struct {
@@ -348,6 +393,16 @@ func run() error {
 	}
 	app.hwnd = hwnd
 	procDragAcceptFiles.Call(hwnd, 1)
+	app.restoreWindowBounds()
+	app.initTray()
+	app.showOnboardingIfNeeded()
+	if app.desktop != nil {
+		app.desktop.setSensitivity(app.desktopSensitivity)
+		_ = app.desktop.setDeviceIndex(app.desktopDevice)
+	}
+	if app.desktopMode {
+		_ = app.desktop.start()
+	}
 
 	procShowWindow.Call(hwnd, swShowDefault)
 	procUpdateWindow.Call(hwnd)
@@ -377,6 +432,10 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		return 0
 	case wmTimer:
 		app.tickSleepTimer()
+		app.maybeAutoDesktop()
+		if app.modeBlend < 1 {
+			app.modeBlend += 0.1
+		}
 		procInvalidateRect.Call(hwnd, 0, 0)
 		return 0
 	case wmKeyDown:
@@ -416,13 +475,19 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		case uintptr('D'):
 			app.loadCurrentFolder()
 		case uintptr('E'):
-			app.cycleEqualizer()
+			app.focusNextEQBand()
 		case uintptr('F'):
 			app.toggleFavorite()
 		case uintptr('G'):
 			app.nextTheme()
+		case uintptr('H'):
+			app.saveCustomTheme()
 		case uintptr('I'):
 			app.toggleDesktopInput()
+		case uintptr('J'):
+			app.cyclePlaybackSpeed()
+		case uintptr('K'):
+			app.cycleEQBand()
 		case uintptr('L'):
 			app.toggleFullscreen()
 		case uintptr('M'):
@@ -445,11 +510,33 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 			app.seekLarge = !app.seekLarge
 			app.updateStatus()
 			invalidate()
+		case uintptr('U'):
+			app.showRecentView()
 		case uintptr('V'):
 			app.cycleMode()
+		case uintptr('W'):
+			app.cycleDesktopDevice()
 		case uintptr('X'):
 			app.toggleMini()
+		case uintptr('Y'):
+			app.showFavoritesView()
+		case uintptr('Z'):
+			app.toggleVisualOnly()
+		case uintptr('A'):
+			app.toggleDesktopAuto()
+		case uintptr('/'):
+			app.showSearchView()
+		case uintptr(']'):
+			app.cycleDesktopSensitivity()
 		}
+		return 0
+	case wmChar:
+		if app.panel == viewSearch {
+			app.appendSearchChar(rune(wParam))
+		}
+		return 0
+	case wmTrayIcon:
+		app.handleTrayMessage(lParam)
 		return 0
 	case wmMciNotify:
 		if wParam == mciNotifySuccess {
@@ -487,6 +574,8 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		draw(hwnd)
 		return 0
 	case wmDestroy:
+		app.saveWindowBounds()
+		app.removeTray()
 		app.stopDesktopInput()
 		closeTrack()
 		procPostQuitMessage.Call(0)
@@ -569,12 +658,11 @@ func (s *appState) loadCurrentTrack(play bool) {
 	s.frames = nil
 	s.currentBars = nil
 	s.ambientSeed = float64(hashPath(path)%1000) / 100
-	if strings.EqualFold(filepath.Ext(path), ".wav") {
-		if audio, err := wav.DecodeFile(path); err == nil {
-			if frames := visual.BuildFrames(audio.Mono, audio.SampleRate, fps, barCount); len(frames) > 0 {
-				s.frames = frames
-				duration = time.Duration(audio.DurationSeconds() * float64(time.Second))
-			}
+	s.loadTrackMedia(path)
+	if frames, dur := s.buildFramesForPath(path); len(frames) > 0 {
+		s.frames = frames
+		if dur > 0 {
+			duration = dur
 		}
 	}
 
@@ -585,6 +673,7 @@ func (s *appState) loadCurrentTrack(play bool) {
 	s.paused = !play
 	s.addRecent(path)
 	s.applyVolume()
+	s.applyEqualizer()
 	s.saveSettings()
 	if play {
 		s.restart()
@@ -853,6 +942,7 @@ func (s *appState) seekTo(pos time.Duration, play bool) {
 		s.startedAt = time.Now()
 		s.playing = true
 		s.paused = false
+		s.applyPlaybackSpeed()
 	} else if !s.paused {
 		_ = stopTrack()
 	}
@@ -860,6 +950,8 @@ func (s *appState) seekTo(pos time.Duration, play bool) {
 }
 
 func (s *appState) cycleMode() {
+	s.prevMode = s.mode
+	s.modeBlend = 0
 	s.mode = (s.mode + 1) % modeCount
 	s.updateStatus()
 	s.saveSettings()
@@ -867,15 +959,18 @@ func (s *appState) cycleMode() {
 }
 
 func (s *appState) nextTheme() {
-	s.theme = (s.theme + 1) % themeCount
+	maxTheme := themeOcean + 1
+	if len(s.customThemes) > 0 {
+		maxTheme = themeCustomBase + theme(len(s.customThemes))
+	}
+	s.theme = (s.theme + 1) % maxTheme
 	s.updateStatus()
 	s.saveSettings()
 	invalidate()
 }
 
 func (s *appState) cycleEqualizer() {
-	// MCI does not expose DSP equalizers, so this cycles color emphasis presets.
-	s.nextTheme()
+	s.focusNextEQBand()
 }
 
 func (s *appState) seekStep() time.Duration {
@@ -1029,34 +1124,55 @@ func draw(hwnd uintptr) {
 	procSetBkMode.Call(hdc, transparent)
 	procSetTextColor.Call(hdc, palette.text)
 	textOut(hdc, 28, 24, appTitle+" Pro")
-	if !app.mini {
+	if !app.mini && !app.visualOnly {
 		procSetTextColor.Call(hdc, palette.dim)
-		textOut(hdc, 28, 52, app.status)
-		textOut(hdc, 28, height-30, "O open | I desktop input | Space play | V visualizer | G theme | P shuffle | Q repeat | F favorite | S sleep | X mini | F11 fullscreen")
+		metaLine := app.status
+		if app.meta.Title != "" {
+			metaLine = fmt.Sprintf("%s — %s", app.meta.Title, app.meta.Artist)
+			if line := app.currentLyric(); line != "" {
+				metaLine += " | " + line
+			}
+		}
+		textOut(hdc, 28, 52, metaLine)
+		textOut(hdc, 28, 68, app.status)
+		textOut(hdc, 28, height-30, "O open | I desktop | V viz | G theme | U recent | Y favorites | / search | Z visual-only | J speed | K EQ")
 		drawButtons(hdc, width, height)
 		drawPlaylist(hdc, width, height)
 	}
-	drawProgress(hdc, width, height, palette)
+	if !app.visualOnly {
+		drawProgress(hdc, width, height, palette)
+	}
 
 	bars := app.targetBars()
+	beat := app.beatMultiplier(bars)
+	for i := range bars {
+		bars[i] = math.Min(1, bars[i]*beat)
+	}
 	if len(app.currentBars) != len(bars) {
 		app.currentBars = make([]float64, len(bars))
 	}
 
 	top := int32(112)
 	bottom := height - 104
-	if app.mini {
-		top = 70
-		bottom = height - 58
+	if app.mini || app.visualOnly {
+		top = 28
+		bottom = height - 28
 	}
 	if bottom <= top {
 		return
 	}
 
-	for i, target := range bars {
-		app.currentBars[i] += (target - app.currentBars[i]) * 0.35
-	}
 	visualBounds := rect{left: 28, top: top, right: width - 28, bottom: bottom}
+	if app.artGrid != nil && !app.visualOnly {
+		drawAlbumArtBackground(hdc, visualBounds, app.artGrid)
+	}
+	smooth := 0.35
+	if app.modeBlend < 1 {
+		smooth = 0.18
+	}
+	for i, target := range bars {
+		app.currentBars[i] += (target - app.currentBars[i]) * smooth
+	}
 	drawVisualization(hdc, visualBounds, app.currentBars, app.mode)
 }
 
@@ -1103,7 +1219,7 @@ func drawClassicBars(hdc uintptr, bounds rect, bars []float64) {
 		barHeight := int32(value * float64(usableHeight))
 		left := bounds.left + margin + int32(i)*(barWidth+gap)
 		right := left + barWidth
-		color := gradientColor(i, len(bars), 255)
+		color := bandGradientColor(i, len(bars), bars)
 		fill(hdc, rect{left: left, top: bounds.bottom - barHeight, right: right, bottom: bounds.bottom}, color)
 	}
 }
@@ -1337,6 +1453,9 @@ func drawButtons(hdc uintptr, width, height int32) {
 		{label: "Repeat", action: "repeat"},
 		{label: "Fav", action: "favorite"},
 		{label: "Mute", action: "mute"},
+		{label: "Speed", action: "speed"},
+		{label: "Recent", action: "recent"},
+		{label: "Favs", action: "favs"},
 	}
 	app.buttons = app.buttons[:0]
 	palette := currentPalette()
@@ -1359,7 +1478,8 @@ func drawButtons(hdc uintptr, width, height int32) {
 }
 
 func drawPlaylist(hdc uintptr, width, height int32) {
-	if len(app.playlist) == 0 {
+	list := app.filteredPlaylist()
+	if len(list) == 0 && app.panel == viewQueue {
 		return
 	}
 	palette := currentPalette()
@@ -1367,26 +1487,19 @@ func drawPlaylist(hdc uintptr, width, height int32) {
 	if left < width/2 {
 		return
 	}
-	top := int32(112)
+	top := int32(128)
 	fill(hdc, rect{left: left, top: top, right: width - 28, bottom: height - 104}, dimColor(palette.panel, 0.75))
 	procSetTextColor.Call(hdc, palette.text)
-	textOut(hdc, left+12, top+10, fmt.Sprintf("Queue %d/%d", app.currentIndex+1, len(app.playlist)))
+	textOut(hdc, left+12, top+10, fmt.Sprintf("%s (%d)", app.panelTitle(), len(list)))
 	procSetTextColor.Call(hdc, palette.dim)
-	start := max(0, app.currentIndex-3)
-	for row := 0; row < 8 && start+row < len(app.playlist); row++ {
-		t := app.playlist[start+row]
-		prefix := "  "
-		if start+row == app.currentIndex {
-			prefix = "> "
-			procSetTextColor.Call(hdc, palette.accent)
-		} else {
-			procSetTextColor.Call(hdc, palette.dim)
-		}
+	for row := 0; row < 8 && row < len(list); row++ {
+		t := list[row]
+		procSetTextColor.Call(hdc, palette.dim)
 		fav := ""
 		if t.Favorite {
 			fav = "* "
 		}
-		textOut(hdc, left+12, top+38+int32(row*24), truncate(prefix+fav+t.Title, 34))
+		textOut(hdc, left+12, top+38+int32(row*24), truncate(fav+t.Title, 34))
 	}
 }
 
@@ -1418,6 +1531,12 @@ func (s *appState) handleButtonClick(x, y int32) bool {
 				s.toggleFavorite()
 			case "mute":
 				s.toggleMute()
+			case "speed":
+				s.cyclePlaybackSpeed()
+			case "recent":
+				s.showRecentView()
+			case "favs":
+				s.showFavoritesView()
 			}
 			return true
 		}
@@ -1526,10 +1645,28 @@ func (s *appState) loadSettings() {
 		s.volume = 800
 	}
 	s.muted = cfg.Muted
+	s.desktopMode = cfg.DesktopInput
+	s.desktopAuto = cfg.DesktopAuto
+	if cfg.DesktopSensitivity > 0 {
+		s.desktopSensitivity = cfg.DesktopSensitivity
+	}
+	s.desktopDevice = cfg.DesktopDevice
 	s.repeat = cfg.Repeat % 3
 	s.shuffle = cfg.Shuffle
 	s.recent = cfg.Recent
 	s.libraryRoot = cfg.LibraryRoot
+	s.seenOnboarding = cfg.SeenOnboarding
+	s.windowX = cfg.WindowX
+	s.windowY = cfg.WindowY
+	s.windowW = cfg.WindowW
+	s.windowH = cfg.WindowH
+	if cfg.PlaybackSpeed > 0 {
+		s.playbackSpeed = cfg.PlaybackSpeed
+	}
+	s.eqBass = cfg.EqBass
+	s.eqMid = cfg.EqMid
+	s.eqTreble = cfg.EqTreble
+	s.customThemes = cfg.CustomThemes
 	for _, fav := range cfg.Favorites {
 		s.favorites[filepath.Clean(fav)] = true
 	}
@@ -1537,15 +1674,28 @@ func (s *appState) loadSettings() {
 
 func (s *appState) saveSettings() {
 	cfg := settings{
-		Mode:         s.mode,
-		Theme:        s.theme,
-		Volume:       s.volume,
-		Muted:        s.muted,
-		DesktopInput: s.desktopMode,
-		Repeat:       s.repeat,
-		Shuffle:      s.shuffle,
-		Recent:       s.recent,
-		LibraryRoot:  s.libraryRoot,
+		Mode:               s.mode,
+		Theme:              s.theme,
+		Volume:             s.volume,
+		Muted:              s.muted,
+		DesktopInput:       s.desktopMode,
+		DesktopAuto:        s.desktopAuto,
+		DesktopSensitivity: s.desktopSensitivity,
+		DesktopDevice:      s.desktopDevice,
+		Repeat:             s.repeat,
+		Shuffle:            s.shuffle,
+		Recent:             s.recent,
+		LibraryRoot:        s.libraryRoot,
+		SeenOnboarding:     s.seenOnboarding,
+		WindowX:            s.windowX,
+		WindowY:            s.windowY,
+		WindowW:            s.windowW,
+		WindowH:            s.windowH,
+		PlaybackSpeed:      s.playbackSpeed,
+		EqBass:             s.eqBass,
+		EqMid:              s.eqMid,
+		EqTreble:           s.eqTreble,
+		CustomThemes:       s.customThemes,
 	}
 	for fav, ok := range s.favorites {
 		if ok {
@@ -1583,6 +1733,12 @@ func currentPalette() palette {
 }
 
 func paletteFor(theme theme) palette {
+	if theme >= themeCustomBase {
+		idx := int(theme - themeCustomBase)
+		if idx >= 0 && idx < len(app.customThemes) {
+			return paletteFromCustom(app.customThemes[idx])
+		}
+	}
 	switch theme {
 	case themeLava:
 		return palette{background: rgb(18, 8, 6), panel: rgb(58, 23, 18), text: rgb(255, 238, 220), dim: rgb(220, 145, 110), accent: rgb(255, 92, 40), accent2: rgb(255, 190, 40)}
@@ -1610,6 +1766,13 @@ func inputLabel() string {
 }
 
 func themeName(theme theme) string {
+	if theme >= themeCustomBase {
+		idx := int(theme - themeCustomBase)
+		if idx >= 0 && idx < len(app.customThemes) {
+			return app.customThemes[idx].Name
+		}
+		return "Custom"
+	}
 	switch theme {
 	case themeLava:
 		return "Lava"
@@ -1776,6 +1939,15 @@ func gradientColor(index, total int, alpha byte) uintptr {
 	r := byte(60 + 170*math.Pow(t, 1.2))
 	g := byte(210 - 90*t)
 	b := byte(255 - 115*t)
+	return rgb(r, g, b)
+}
+
+func bandGradientColor(index, total int, bars []float64) uintptr {
+	bass, mid, treble := visual.SplitBands(bars)
+	t := float64(index) / float64(max(1, total-1))
+	r := byte(40 + bass*200 + t*30)
+	g := byte(40 + mid*200 + t*20)
+	b := byte(40 + treble*200 + (1-t)*40)
 	return rgb(r, g, b)
 }
 
