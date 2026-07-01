@@ -49,6 +49,8 @@ After extracting it on Windows, double-click:
 build-windows.bat
 ```
 
+If Go is not installed, the script will offer to install it with Windows Package Manager (`winget`). After the build finishes, it creates a `Music Visualizer Pro` shortcut on your Desktop.
+
 I removed the prebuilt `.exe` download from the current branch because unsigned executables downloaded from GitHub can be blocked by Windows Defender or Edge. Build locally from source instead.
 
 To rebuild it from source:
