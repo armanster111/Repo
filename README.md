@@ -8,6 +8,7 @@ A native Windows music player and visualizer with playlists, MP3/WAV playback, t
 - Plays Windows-supported audio through MCI, including `.wav`, `.mp3`, `.wma`, `.mid`, `.aiff`, `.au`, and `.snd`.
 - Builds a queue from the selected folder and supports previous/next, shuffle, repeat one/all, favorites, and recent files.
 - Draws real waveform visualizers for PCM WAV files and animated visualizers for other formats.
+- Can toggle Desktop Input mode to listen to the default Windows speaker output and visualize whatever your PC is playing.
 - Includes ten visualizer modes: Classic, Mirror, Blocks, Wave, Halo, Spectrum, Fire, Particles, Tunnel, and Plasma.
 - Includes four themes: Neon, Lava, Cyberpunk, and Ocean.
 - Shows a clickable progress bar for shifting through the track.
@@ -20,6 +21,7 @@ A native Windows music player and visualizer with playlists, MP3/WAV playback, t
   - `B` / `N`: previous/next track
   - `V`: cycle visualizer modes
   - `G`: cycle themes
+  - `I`: toggle Desktop Input mode
   - `P`: toggle shuffle
   - `Q`: cycle repeat mode
   - `F`: favorite/unfavorite current track

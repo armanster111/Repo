@@ -163,15 +163,16 @@ const (
 )
 
 type settings struct {
-	Mode        visualMode `json:"mode"`
-	Theme       theme      `json:"theme"`
-	Volume      int        `json:"volume"`
-	Muted       bool       `json:"muted"`
-	Repeat      repeatMode `json:"repeat"`
-	Shuffle     bool       `json:"shuffle"`
-	Recent      []string   `json:"recent"`
-	Favorites   []string   `json:"favorites"`
-	LibraryRoot string     `json:"library_root"`
+	Mode         visualMode `json:"mode"`
+	Theme        theme      `json:"theme"`
+	Volume       int        `json:"volume"`
+	Muted        bool       `json:"muted"`
+	DesktopInput bool       `json:"desktop_input"`
+	Repeat       repeatMode `json:"repeat"`
+	Shuffle      bool       `json:"shuffle"`
+	Recent       []string   `json:"recent"`
+	Favorites    []string   `json:"favorites"`
+	LibraryRoot  string     `json:"library_root"`
 }
 
 type track struct {
@@ -204,6 +205,7 @@ type appState struct {
 	recent         []string
 	favorites      map[string]bool
 	buttons        []button
+	desktop        *desktopInput
 	libraryRoot    string
 	volume         int
 	sleepMinutes   int
@@ -212,6 +214,7 @@ type appState struct {
 	seekLarge      bool
 	shuffle        bool
 	muted          bool
+	desktopMode    bool
 	fullscreen     bool
 	mini           bool
 	playing        bool
@@ -225,6 +228,7 @@ var app = &appState{
 	theme:        themeNeon,
 	volume:       800,
 	favorites:    map[string]bool{},
+	desktop:      newDesktopInput(),
 }
 
 type point struct {
@@ -417,6 +421,8 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 			app.toggleFavorite()
 		case uintptr('G'):
 			app.nextTheme()
+		case uintptr('I'):
+			app.toggleDesktopInput()
 		case uintptr('L'):
 			app.toggleFullscreen()
 		case uintptr('M'):
@@ -481,6 +487,7 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		draw(hwnd)
 		return 0
 	case wmDestroy:
+		app.stopDesktopInput()
 		closeTrack()
 		procPostQuitMessage.Call(0)
 		return 0
@@ -738,6 +745,35 @@ func (s *appState) toggleMute() {
 	invalidate()
 }
 
+func (s *appState) toggleDesktopInput() {
+	if s.desktop == nil {
+		s.desktop = newDesktopInput()
+	}
+	if s.desktopMode {
+		s.stopDesktopInput()
+		s.status = "Desktop audio input off. Visualizer is back on player audio."
+	} else {
+		if err := s.desktop.start(); err != nil {
+			s.status = "Desktop audio input failed: " + err.Error()
+			invalidate()
+			return
+		}
+		s.desktopMode = true
+		s.status = "Desktop audio input on. Play anything on Windows and the visualizer will react."
+	}
+	s.saveSettings()
+	invalidate()
+}
+
+func (s *appState) stopDesktopInput() {
+	if s.desktop != nil {
+		s.desktop.stopCapture()
+	}
+	s.desktopMode = false
+	s.saveSettings()
+	invalidate()
+}
+
 func (s *appState) applyVolume() {
 	volume := s.volume
 	if s.muted {
@@ -868,7 +904,7 @@ func (s *appState) progress() float64 {
 
 func (s *appState) updateStatus() {
 	if s.filePath == "" {
-		s.status = fmt.Sprintf("Open or drag audio. Mode: %s | Theme: %s | Volume: %d%%", modeName(s.mode), themeName(s.theme), s.volume/10)
+		s.status = fmt.Sprintf("Open or drag audio. Input:%s | Mode:%s | Theme:%s | Volume:%d%%", s.inputName(), modeName(s.mode), themeName(s.theme), s.volume/10)
 		return
 	}
 	state := "Playing"
@@ -881,12 +917,13 @@ func (s *appState) updateStatus() {
 	if s.favorites[filepath.Clean(s.filePath)] {
 		fav = " *Favorite"
 	}
-	s.status = fmt.Sprintf("%s %s%s  %s/%s  Mode:%s  Theme:%s  Vol:%d%%  Shuffle:%t  Repeat:%s  Sleep:%s",
+	s.status = fmt.Sprintf("%s %s%s  %s/%s  Input:%s  Mode:%s  Theme:%s  Vol:%d%%  Shuffle:%t  Repeat:%s  Sleep:%s",
 		state,
 		filepath.Base(s.filePath),
 		fav,
 		durationText(s.position()),
 		durationText(s.duration),
+		s.inputName(),
 		modeName(s.mode),
 		themeName(s.theme),
 		s.volume/10,
@@ -896,7 +933,24 @@ func (s *appState) updateStatus() {
 	)
 }
 
+func (s *appState) inputName() string {
+	if s.desktopMode {
+		if s.desktop != nil {
+			if errText := s.desktop.errText(); errText != "" {
+				return "Desktop error"
+			}
+		}
+		return "Desktop"
+	}
+	return "Player"
+}
+
 func (s *appState) targetBars() []float64 {
+	if s.desktopMode && s.desktop != nil && s.desktop.isActive() {
+		if bars := s.desktop.snapshot(); len(bars) > 0 {
+			return bars
+		}
+	}
 	if len(s.frames) == 0 {
 		return s.ambientBars()
 	}
@@ -978,7 +1032,7 @@ func draw(hwnd uintptr) {
 	if !app.mini {
 		procSetTextColor.Call(hdc, palette.dim)
 		textOut(hdc, 28, 52, app.status)
-		textOut(hdc, 28, height-30, "O open | D folder | Space play | V visualizer | G theme | P shuffle | Q repeat | F favorite | S sleep | X mini | F11 fullscreen")
+		textOut(hdc, 28, height-30, "O open | I desktop input | Space play | V visualizer | G theme | P shuffle | Q repeat | F favorite | S sleep | X mini | F11 fullscreen")
 		drawButtons(hdc, width, height)
 		drawPlaylist(hdc, width, height)
 	}
@@ -1277,6 +1331,7 @@ func drawButtons(hdc uintptr, width, height int32) {
 		{label: playLabel(), action: "play"},
 		{label: "Next", action: "next"},
 		{label: "Viz", action: "viz"},
+		{label: inputLabel(), action: "input"},
 		{label: "Theme", action: "theme"},
 		{label: "Shuffle", action: "shuffle"},
 		{label: "Repeat", action: "repeat"},
@@ -1351,6 +1406,8 @@ func (s *appState) handleButtonClick(x, y int32) bool {
 				s.nextTrack()
 			case "viz":
 				s.cycleMode()
+			case "input":
+				s.toggleDesktopInput()
 			case "theme":
 				s.nextTheme()
 			case "shuffle":
@@ -1480,14 +1537,15 @@ func (s *appState) loadSettings() {
 
 func (s *appState) saveSettings() {
 	cfg := settings{
-		Mode:        s.mode,
-		Theme:       s.theme,
-		Volume:      s.volume,
-		Muted:       s.muted,
-		Repeat:      s.repeat,
-		Shuffle:     s.shuffle,
-		Recent:      s.recent,
-		LibraryRoot: s.libraryRoot,
+		Mode:         s.mode,
+		Theme:        s.theme,
+		Volume:       s.volume,
+		Muted:        s.muted,
+		DesktopInput: s.desktopMode,
+		Repeat:       s.repeat,
+		Shuffle:      s.shuffle,
+		Recent:       s.recent,
+		LibraryRoot:  s.libraryRoot,
 	}
 	for fav, ok := range s.favorites {
 		if ok {
@@ -1542,6 +1600,13 @@ func playLabel() string {
 		return "Pause"
 	}
 	return "Play"
+}
+
+func inputLabel() string {
+	if app.desktopMode {
+		return "Input On"
+	}
+	return "Input"
 }
 
 func themeName(theme theme) string {
