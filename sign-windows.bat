@@ -7,5 +7,5 @@ if "%SIGN_CERT%"=="" (
   exit /b 1
 )
 
-signtool sign /fd SHA256 /f "%SIGN_CERT%" /p "%SIGN_PASSWORD%" dist\music-visualizer.exe
-signtool verify /pa dist\music-visualizer.exe
+signtool sign /fd SHA256 /f "%SIGN_CERT%" /p "%SIGN_PASSWORD%" dist\MusicVisualizerPro.exe
+signtool verify /pa dist\MusicVisualizerPro.exe

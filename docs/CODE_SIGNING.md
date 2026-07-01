@@ -1,13 +1,24 @@
 # Code Signing
 
-Windows Defender and SmartScreen often block unsigned executables downloaded from the internet.
+Windows Defender and SmartScreen may warn about unsigned executables downloaded from the internet.
 
-To publish a trusted build:
+For most users:
+
+1. Download `MusicVisualizerPro-Windows.zip`
+2. Extract `MusicVisualizerPro.exe`
+3. If SmartScreen appears, choose **More info** → **Run anyway**
+
+The app is a single self-contained Go binary with no installer dependencies.
+
+## Publishing trusted builds
+
+To remove SmartScreen warnings for your users:
 
 1. Buy a code signing certificate from a trusted CA.
-2. Build locally with `build-windows.bat`.
+2. Build with `build-windows.bat` or `scripts/package-windows.sh`.
 3. Sign with `sign-windows.bat` after setting:
    - `SIGN_CERT` = path to your `.pfx`
    - `SIGN_PASSWORD` = certificate password
+4. Upload the signed `dist/MusicVisualizerPro.exe` or ZIP to releases.
 
-Unsigned builds are still safe when you compile them yourself from the source package.
+Unsigned builds are still safe when you build them yourself from source.

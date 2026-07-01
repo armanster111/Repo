@@ -373,7 +373,7 @@ func installToLocalAppData() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(target, "music-visualizer.exe"), data, 0755)
+	return os.WriteFile(filepath.Join(target, "MusicVisualizerPro.exe"), data, 0755)
 }
 
 type winRect struct {

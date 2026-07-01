@@ -2,6 +2,23 @@
 
 A native Windows music player and visualizer with playlists, MP3/WAV playback, desktop audio capture, themes, lyrics, album-art backgrounds, and track seeking.
 
+## Quick start (Windows)
+
+1. Download **`MusicVisualizerPro-Windows.zip`**
+2. Extract it anywhere (Downloads, Desktop, etc.)
+3. Double-click **`MusicVisualizerPro.exe`**
+
+No Go install. No build step. No separate installer required.
+
+Direct download (latest branch build):
+
+- ZIP: `https://github.com/armanster111/Repo/raw/cursor/music-visualizer-exe-7b99/dist/MusicVisualizerPro-Windows.zip`
+- EXE: `https://github.com/armanster111/Repo/raw/cursor/music-visualizer-exe-7b99/dist/MusicVisualizerPro.exe`
+
+Optional: run `install-windows.bat` to copy the app into `%LOCALAPPDATA%\MusicVisualizerPro` and create a Desktop shortcut.
+
+If Windows SmartScreen warns about an unsigned app, choose **More info** → **Run anyway**. See `docs/CODE_SIGNING.md` if you want to sign releases yourself.
+
 ## What it does
 
 - Opens or drag-drops audio files and folders.
@@ -31,20 +48,15 @@ A native Windows music player and visualizer with playlists, MP3/WAV playback, d
 - `C` snapshot | `X` mini | `Z` visual-only | `F11`/`L` fullscreen
 - `Esc` quit
 
-## Download/build
+## Build from source (optional)
 
-Safest option: download the source-only package, then build on your Windows PC:
+Only needed if you want to modify the code:
 
-```text
-dist/music-visualizer-source-package.zip
-```
+1. Install [Go](https://go.dev/dl/)
+2. Run `build-windows.bat`
+3. Open `dist\MusicVisualizerPro.exe`
 
-1. Extract the ZIP on Windows.
-2. Double-click `build-windows.bat` (installs Go via winget if needed).
-3. Open `dist\music-visualizer.exe` or the Desktop shortcut.
-4. Optional: run `install-windows.bat` to install into `%LOCALAPPDATA%\MusicVisualizerPro`.
-
-Unsigned `.exe` downloads may be blocked by Defender. Building locally avoids that. See `docs/CODE_SIGNING.md` for signing with your own certificate.
+CI also rebuilds the standalone `.exe` on every push via `.github/workflows/windows-release.yml`.
 
 ## Notes
 
