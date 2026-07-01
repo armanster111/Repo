@@ -37,17 +37,19 @@ A native Windows music player and visualizer with playlists, MP3/WAV playback, t
 
 ## Download/build
 
-This repo includes a built executable at:
+Safest option: download the source-only package, then build it on your own Windows computer:
 
 ```text
-dist/music-visualizer.exe
+dist/music-visualizer-source-package.zip
 ```
 
-For a one-file download package, use:
+After extracting it on Windows, double-click:
 
 ```text
-dist/music-visualizer-windows-package.zip
+build-windows.bat
 ```
+
+I removed the prebuilt `.exe` download from the current branch because unsigned executables downloaded from GitHub can be blocked by Windows Defender or Edge. Build locally from source instead.
 
 To rebuild it from source:
 
