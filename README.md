@@ -1,21 +1,38 @@
 # Music Visualizer Pro
 
-A native Windows music visualizer for WAV files with multiple display modes and track seeking.
+A native Windows music player and visualizer with playlists, MP3/WAV playback, themes, and track seeking.
 
 ## What it does
 
-- Opens `.wav` audio files from a native file picker.
-- Plays the selected file through Windows audio.
-- Draws animated visualizers from the decoded waveform.
-- Includes five visualizer modes: Classic, Mirror, Blocks, Wave, and Halo.
+- Opens or drag-drops audio files and folders.
+- Plays Windows-supported audio through MCI, including `.wav`, `.mp3`, `.wma`, `.mid`, `.aiff`, `.au`, and `.snd`.
+- Builds a queue from the selected folder and supports previous/next, shuffle, repeat one/all, favorites, and recent files.
+- Draws real waveform visualizers for PCM WAV files and animated visualizers for other formats.
+- Includes ten visualizer modes: Classic, Mirror, Blocks, Wave, Halo, Spectrum, Fire, Particles, Tunnel, and Plasma.
+- Includes four themes: Neon, Lava, Cyberpunk, and Ocean.
 - Shows a clickable progress bar for shifting through the track.
+- Includes volume up/down, mute, fullscreen, mini-player, media key support, sleep timer, and snapshot export.
+- Saves settings in `%APPDATA%\MusicVisualizerPro\settings.json`.
 - Supports keyboard shortcuts:
-  - `O`: open a WAV file
+  - `O`: open an audio file
+  - Drag/drop: open files or folders
   - `Space`: pause/resume playback
+  - `B` / `N`: previous/next track
   - `V`: cycle visualizer modes
+  - `G`: cycle themes
+  - `P`: toggle shuffle
+  - `Q`: cycle repeat mode
+  - `F`: favorite/unfavorite current track
+  - `D`: load the current folder as a playlist
+  - `M`: mute/unmute
+  - `Up` / `Down`: volume up/down
   - `Left` / `Right`: seek backward/forward
   - `T`: toggle 10-second and 30-second seek jumps
   - `R`: restart the current track
+  - `S`: cycle sleep timer
+  - `C`: export a visualizer snapshot to the Desktop
+  - `X`: toggle mini-player mode
+  - `F11` / `L`: toggle fullscreen/maximized mode
   - `Esc`: quit
 
 ## Download/build
@@ -40,4 +57,4 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-H windowsgui" -o dist/music-visual
 
 ## Notes
 
-The visualizer intentionally supports uncompressed PCM WAV files so it can stay dependency-free and ship as one small `.exe`.
+The executable stays dependency-free. WAV files get real waveform analysis; MP3 and other Windows-supported formats play normally and use generated animated visualizers because decoding compressed audio would require a bundled decoder.

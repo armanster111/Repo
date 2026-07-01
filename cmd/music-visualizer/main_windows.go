@@ -3,11 +3,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -29,7 +31,9 @@ const (
 	cwUseDefault       = 0x80000000
 	wsOverlappedWindow = 0x00cf0000
 
-	swShowDefault = 10
+	swShowDefault   = 10
+	swShowNormal    = 1
+	swShowMaximized = 3
 
 	wmDestroy     = 0x0002
 	wmPaint       = 0x000f
@@ -39,14 +43,25 @@ const (
 	wmMouseMove   = 0x0200
 	wmLButtonDown = 0x0201
 	wmLButtonUp   = 0x0202
+	wmDropFiles   = 0x0233
+	wmApp         = 0x8000
+	wmMciNotify   = wmApp + 1
 
 	mkLButton = 0x0001
 
-	vkEscape = 0x1b
-	vkHome   = 0x24
-	vkLeft   = 0x25
-	vkRight  = 0x27
-	vkSpace  = 0x20
+	vkEscape         = 0x1b
+	vkEnd            = 0x23
+	vkHome           = 0x24
+	vkLeft           = 0x25
+	vkUp             = 0x26
+	vkRight          = 0x27
+	vkDown           = 0x28
+	vkSpace          = 0x20
+	vkF11            = 0x7a
+	vkMediaNext      = 0xb0
+	vkMediaPrev      = 0xb1
+	vkMediaStop      = 0xb2
+	vkMediaPlayPause = 0xb3
 
 	idcArrow = 32512
 
@@ -58,9 +73,8 @@ const (
 	ofnFileMustExist = 0x00001000
 	ofnExplorer      = 0x00080000
 
-	sndAsync     = 0x0001
-	sndNoDefault = 0x0002
-	sndFilename  = 0x00020000
+	mciNotifySuccess = 0x0001
+	mciNotifyAborted = 0x0004
 
 	mbIconError = 0x00000010
 )
@@ -70,6 +84,7 @@ var (
 	gdi32    = syscall.NewLazyDLL("gdi32.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 	comdlg32 = syscall.NewLazyDLL("comdlg32.dll")
+	shell32  = syscall.NewLazyDLL("shell32.dll")
 	winmm    = syscall.NewLazyDLL("winmm.dll")
 
 	procBeginPaint       = user32.NewProc("BeginPaint")
@@ -106,9 +121,11 @@ var (
 
 	procGetModuleHandleW   = kernel32.NewProc("GetModuleHandleW")
 	procGetOpenFileNameW   = comdlg32.NewProc("GetOpenFileNameW")
+	procDragAcceptFiles    = shell32.NewProc("DragAcceptFiles")
+	procDragFinish         = shell32.NewProc("DragFinish")
+	procDragQueryFileW     = shell32.NewProc("DragQueryFileW")
 	procMCIGetErrorStringW = winmm.NewProc("mciGetErrorStringW")
 	procMCISendStringW     = winmm.NewProc("mciSendStringW")
-	procPlaySoundW         = winmm.NewProc("PlaySoundW")
 )
 
 type visualMode int
@@ -119,8 +136,55 @@ const (
 	modeBlocks
 	modeWave
 	modeHalo
+	modeSpectrum
+	modeFire
+	modeParticles
+	modeTunnel
+	modePlasma
 	modeCount
 )
+
+type theme int
+
+const (
+	themeNeon theme = iota
+	themeLava
+	themeCyberpunk
+	themeOcean
+	themeCount
+)
+
+type repeatMode int
+
+const (
+	repeatOff repeatMode = iota
+	repeatOne
+	repeatAll
+)
+
+type settings struct {
+	Mode        visualMode `json:"mode"`
+	Theme       theme      `json:"theme"`
+	Volume      int        `json:"volume"`
+	Muted       bool       `json:"muted"`
+	Repeat      repeatMode `json:"repeat"`
+	Shuffle     bool       `json:"shuffle"`
+	Recent      []string   `json:"recent"`
+	Favorites   []string   `json:"favorites"`
+	LibraryRoot string     `json:"library_root"`
+}
+
+type track struct {
+	Path     string
+	Title    string
+	Favorite bool
+}
+
+type button struct {
+	label  string
+	action string
+	bounds rect
+}
 
 type appState struct {
 	hwnd           uintptr
@@ -128,19 +192,39 @@ type appState struct {
 	status         string
 	frames         []visual.Frame
 	currentBars    []float64
+	ambientSeed    float64
 	duration       time.Duration
 	startedAt      time.Time
 	playbackOffset time.Duration
 	dragPosition   time.Duration
 	mode           visualMode
+	theme          theme
+	playlist       []track
+	currentIndex   int
+	recent         []string
+	favorites      map[string]bool
+	buttons        []button
+	libraryRoot    string
+	volume         int
+	sleepMinutes   int
+	sleepStartedAt time.Time
+	repeat         repeatMode
 	seekLarge      bool
+	shuffle        bool
+	muted          bool
+	fullscreen     bool
+	mini           bool
 	playing        bool
 	paused         bool
 	dragging       bool
 }
 
 var app = &appState{
-	status: "Press O to open a WAV file. V changes visualizers. Click the track bar to seek.",
+	status:       "Open or drag audio here. MP3/WAV playback, playlists, themes, and visualizers are ready.",
+	currentIndex: -1,
+	theme:        themeNeon,
+	volume:       800,
+	favorites:    map[string]bool{},
 }
 
 type point struct {
@@ -222,6 +306,7 @@ func main() {
 
 func run() error {
 	runtime.LockOSThread()
+	app.loadSettings()
 
 	instance, _, _ := procGetModuleHandleW.Call(0)
 	className, _ := syscall.UTF16PtrFromString("MusicVisualizerWindow")
@@ -258,12 +343,13 @@ func run() error {
 		return fmt.Errorf("create window: %w", err)
 	}
 	app.hwnd = hwnd
+	procDragAcceptFiles.Call(hwnd, 1)
 
 	procShowWindow.Call(hwnd, swShowDefault)
 	procUpdateWindow.Call(hwnd)
 
 	if len(os.Args) > 1 {
-		app.load(os.Args[1])
+		app.openPath(os.Args[1])
 	}
 
 	var message msg
@@ -286,36 +372,92 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		procSetTimer.Call(hwnd, timerID, 1000/fps, 0)
 		return 0
 	case wmTimer:
+		app.tickSleepTimer()
 		procInvalidateRect.Call(hwnd, 0, 0)
 		return 0
 	case wmKeyDown:
 		switch wParam {
 		case vkEscape:
 			procDestroyWindow.Call(hwnd)
+		case vkEnd:
+			app.nextTrack()
 		case vkHome:
 			app.seekTo(0, app.playing)
 		case vkLeft:
 			app.seekBy(-app.seekStep())
 		case vkRight:
 			app.seekBy(app.seekStep())
+		case vkUp:
+			app.changeVolume(50)
+		case vkDown:
+			app.changeVolume(-50)
 		case vkSpace:
 			app.togglePlay()
+		case vkF11:
+			app.toggleFullscreen()
+		case vkMediaNext:
+			app.nextTrack()
+		case vkMediaPrev:
+			app.previousTrack()
+		case vkMediaStop:
+			if app.playing {
+				app.togglePlay()
+			}
+		case vkMediaPlayPause:
+			app.togglePlay()
+		case uintptr('B'):
+			app.previousTrack()
+		case uintptr('C'):
+			app.exportSnapshot()
+		case uintptr('D'):
+			app.loadCurrentFolder()
+		case uintptr('E'):
+			app.cycleEqualizer()
+		case uintptr('F'):
+			app.toggleFavorite()
+		case uintptr('G'):
+			app.nextTheme()
+		case uintptr('L'):
+			app.toggleFullscreen()
+		case uintptr('M'):
+			app.toggleMute()
+		case uintptr('N'):
+			app.nextTrack()
 		case uintptr('O'):
 			if path, ok := openWAVDialog(hwnd); ok {
-				app.load(path)
+				app.openPath(path)
 			}
+		case uintptr('P'):
+			app.toggleShuffle()
+		case uintptr('Q'):
+			app.cycleRepeat()
 		case uintptr('R'):
 			app.restart()
+		case uintptr('S'):
+			app.cycleSleepTimer()
 		case uintptr('T'):
 			app.seekLarge = !app.seekLarge
 			app.updateStatus()
 			invalidate()
 		case uintptr('V'):
 			app.cycleMode()
+		case uintptr('X'):
+			app.toggleMini()
 		}
+		return 0
+	case wmMciNotify:
+		if wParam == mciNotifySuccess {
+			app.handleTrackEnded()
+		}
+		return 0
+	case wmDropFiles:
+		app.handleDrop(wParam)
 		return 0
 	case wmLButtonDown:
 		x, y := mousePoint(lParam)
+		if app.handleButtonClick(x, y) {
+			return 0
+		}
 		if app.seekFromPoint(x, y) {
 			app.dragging = true
 			procSetCapture.Call(hwnd)
@@ -348,43 +490,101 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 	}
 }
 
-func (s *appState) load(path string) {
-	audio, err := wav.DecodeFile(path)
+func (s *appState) openPath(path string) {
+	info, err := os.Stat(path)
 	if err != nil {
-		s.status = "Could not load WAV: " + err.Error()
-		s.frames = nil
-		s.playing = false
-		closeTrack()
+		s.status = "Could not open file: " + err.Error()
+		invalidate()
+		return
+	}
+	if info.IsDir() {
+		s.openPlaylist(collectAudioFiles(path), 0)
+		return
+	}
+	if !isAudioFile(path) {
+		s.status = "Unsupported file. Try WAV, MP3, WMA, MID, AIFF, AU, or SND."
 		invalidate()
 		return
 	}
 
-	frames := visual.BuildFrames(audio.Mono, audio.SampleRate, fps, barCount)
-	if len(frames) == 0 {
-		s.status = "Loaded WAV file has no audio samples."
-		s.frames = nil
-		s.playing = false
-		closeTrack()
+	playlist := collectAudioFiles(filepath.Dir(path))
+	index := indexOfPath(playlist, path)
+	if index < 0 {
+		playlist = []track{makeTrack(path, s.favorites)}
+		index = 0
+	}
+	s.openPlaylist(playlist, index)
+}
+
+func (s *appState) openPlaylist(playlist []track, index int) {
+	if len(playlist) == 0 {
+		s.status = "No supported audio files found."
 		invalidate()
 		return
 	}
+	if index < 0 || index >= len(playlist) {
+		index = 0
+	}
+	s.playlist = playlist
+	s.currentIndex = index
+	s.libraryRoot = filepath.Dir(playlist[index].Path)
+	s.loadCurrentTrack(true)
+}
 
+func (s *appState) loadCurrentFolder() {
+	if s.filePath == "" {
+		s.status = "Open a song first, then press D to load its folder as a playlist."
+		invalidate()
+		return
+	}
+	s.openPlaylist(collectAudioFiles(filepath.Dir(s.filePath)), indexOfPath(collectAudioFiles(filepath.Dir(s.filePath)), s.filePath))
+}
+
+func (s *appState) loadCurrentTrack(play bool) {
+	if s.currentIndex < 0 || s.currentIndex >= len(s.playlist) {
+		return
+	}
+	path := s.playlist[s.currentIndex].Path
 	if err := openTrack(path); err != nil {
-		s.status = "Windows could not open this WAV file: " + err.Error()
+		s.status = "Windows could not open this audio file: " + err.Error()
 		s.frames = nil
 		s.playing = false
 		closeTrack()
 		invalidate()
 		return
+	}
+
+	duration, err := trackDuration()
+	if err != nil || duration <= 0 {
+		duration = time.Minute
+	}
+
+	s.frames = nil
+	s.currentBars = nil
+	s.ambientSeed = float64(hashPath(path)%1000) / 100
+	if strings.EqualFold(filepath.Ext(path), ".wav") {
+		if audio, err := wav.DecodeFile(path); err == nil {
+			if frames := visual.BuildFrames(audio.Mono, audio.SampleRate, fps, barCount); len(frames) > 0 {
+				s.frames = frames
+				duration = time.Duration(audio.DurationSeconds() * float64(time.Second))
+			}
+		}
 	}
 
 	s.filePath = path
-	s.frames = frames
-	s.duration = time.Duration(audio.DurationSeconds() * float64(time.Second))
+	s.duration = duration
 	s.playbackOffset = 0
-	s.paused = false
-	s.updateStatus()
-	s.restart()
+	s.dragPosition = 0
+	s.paused = !play
+	s.addRecent(path)
+	s.applyVolume()
+	s.saveSettings()
+	if play {
+		s.restart()
+	} else {
+		s.updateStatus()
+		invalidate()
+	}
 }
 
 func (s *appState) restart() {
@@ -415,6 +615,181 @@ func (s *appState) togglePlay() {
 		s.playbackOffset = 0
 	}
 	s.seekTo(s.playbackOffset, true)
+}
+
+func (s *appState) nextTrack() {
+	if len(s.playlist) == 0 {
+		return
+	}
+	if s.shuffle && len(s.playlist) > 1 {
+		s.currentIndex = (s.currentIndex + 3) % len(s.playlist)
+	} else {
+		s.currentIndex++
+		if s.currentIndex >= len(s.playlist) {
+			if s.repeat == repeatAll {
+				s.currentIndex = 0
+			} else {
+				s.currentIndex = len(s.playlist) - 1
+				s.playing = false
+				s.paused = false
+				s.updateStatus()
+				invalidate()
+				return
+			}
+		}
+	}
+	s.loadCurrentTrack(true)
+}
+
+func (s *appState) previousTrack() {
+	if len(s.playlist) == 0 {
+		return
+	}
+	if s.position() > 3*time.Second {
+		s.restart()
+		return
+	}
+	s.currentIndex--
+	if s.currentIndex < 0 {
+		if s.repeat == repeatAll {
+			s.currentIndex = len(s.playlist) - 1
+		} else {
+			s.currentIndex = 0
+		}
+	}
+	s.loadCurrentTrack(true)
+}
+
+func (s *appState) handleTrackEnded() {
+	if s.repeat == repeatOne {
+		s.restart()
+		return
+	}
+	s.nextTrack()
+}
+
+func (s *appState) toggleShuffle() {
+	s.shuffle = !s.shuffle
+	s.updateStatus()
+	s.saveSettings()
+	invalidate()
+}
+
+func (s *appState) cycleRepeat() {
+	s.repeat = (s.repeat + 1) % 3
+	s.updateStatus()
+	s.saveSettings()
+	invalidate()
+}
+
+func (s *appState) toggleFavorite() {
+	if s.filePath == "" {
+		return
+	}
+	clean := filepath.Clean(s.filePath)
+	s.favorites[clean] = !s.favorites[clean]
+	if s.currentIndex >= 0 && s.currentIndex < len(s.playlist) {
+		s.playlist[s.currentIndex].Favorite = s.favorites[clean]
+	}
+	s.updateStatus()
+	s.saveSettings()
+	invalidate()
+}
+
+func (s *appState) exportSnapshot() {
+	bars := s.targetBars()
+	if len(bars) == 0 {
+		s.status = "No visualizer snapshot to export yet."
+		invalidate()
+		return
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	dir := filepath.Join(home, "Desktop")
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		dir = home
+	}
+	name := fmt.Sprintf("music-visualizer-%s.ppm", time.Now().Format("20060102-150405"))
+	path := filepath.Join(dir, name)
+	if err := writeSnapshot(path, bars, s.mode, s.theme); err != nil {
+		s.status = "Snapshot failed: " + err.Error()
+	} else {
+		s.status = "Saved snapshot: " + path
+	}
+	invalidate()
+}
+
+func (s *appState) changeVolume(delta int) {
+	s.volume = clampInt(s.volume+delta, 0, 1000)
+	s.muted = false
+	s.applyVolume()
+	s.updateStatus()
+	s.saveSettings()
+	invalidate()
+}
+
+func (s *appState) toggleMute() {
+	s.muted = !s.muted
+	s.applyVolume()
+	s.updateStatus()
+	s.saveSettings()
+	invalidate()
+}
+
+func (s *appState) applyVolume() {
+	volume := s.volume
+	if s.muted {
+		volume = 0
+	}
+	_ = mciSend(fmt.Sprintf("setaudio musicvisualizer_track volume to %d", volume))
+}
+
+func (s *appState) cycleSleepTimer() {
+	switch s.sleepMinutes {
+	case 0:
+		s.sleepMinutes = 15
+	case 15:
+		s.sleepMinutes = 30
+	case 30:
+		s.sleepMinutes = 60
+	default:
+		s.sleepMinutes = 0
+	}
+	s.sleepStartedAt = time.Now()
+	s.updateStatus()
+	invalidate()
+}
+
+func (s *appState) tickSleepTimer() {
+	if s.sleepMinutes == 0 || s.sleepStartedAt.IsZero() {
+		return
+	}
+	if time.Since(s.sleepStartedAt) >= time.Duration(s.sleepMinutes)*time.Minute {
+		if s.playing {
+			s.togglePlay()
+		}
+		s.sleepMinutes = 0
+		s.status = "Sleep timer paused playback."
+	}
+}
+
+func (s *appState) toggleMini() {
+	s.mini = !s.mini
+	s.updateStatus()
+	invalidate()
+}
+
+func (s *appState) toggleFullscreen() {
+	s.fullscreen = !s.fullscreen
+	if s.fullscreen {
+		procShowWindow.Call(s.hwnd, swShowMaximized)
+	} else {
+		procShowWindow.Call(s.hwnd, swShowNormal)
+	}
+	s.updateStatus()
+	invalidate()
 }
 
 func (s *appState) seekBy(delta time.Duration) {
@@ -451,7 +826,20 @@ func (s *appState) seekTo(pos time.Duration, play bool) {
 func (s *appState) cycleMode() {
 	s.mode = (s.mode + 1) % modeCount
 	s.updateStatus()
+	s.saveSettings()
 	invalidate()
+}
+
+func (s *appState) nextTheme() {
+	s.theme = (s.theme + 1) % themeCount
+	s.updateStatus()
+	s.saveSettings()
+	invalidate()
+}
+
+func (s *appState) cycleEqualizer() {
+	// MCI does not expose DSP equalizers, so this cycles color emphasis presets.
+	s.nextTheme()
 }
 
 func (s *appState) seekStep() time.Duration {
@@ -480,7 +868,7 @@ func (s *appState) progress() float64 {
 
 func (s *appState) updateStatus() {
 	if s.filePath == "" {
-		s.status = "Press O to open a WAV file. V changes visualizers. Click the track bar to seek."
+		s.status = fmt.Sprintf("Open or drag audio. Mode: %s | Theme: %s | Volume: %d%%", modeName(s.mode), themeName(s.theme), s.volume/10)
 		return
 	}
 	state := "Playing"
@@ -489,19 +877,28 @@ func (s *appState) updateStatus() {
 	} else if !s.playing {
 		state = "Ready"
 	}
-	s.status = fmt.Sprintf("%s %s  %s/%s  Mode: %s  Seek: %s",
+	fav := ""
+	if s.favorites[filepath.Clean(s.filePath)] {
+		fav = " *Favorite"
+	}
+	s.status = fmt.Sprintf("%s %s%s  %s/%s  Mode:%s  Theme:%s  Vol:%d%%  Shuffle:%t  Repeat:%s  Sleep:%s",
 		state,
 		filepath.Base(s.filePath),
+		fav,
 		durationText(s.position()),
 		durationText(s.duration),
 		modeName(s.mode),
-		durationText(s.seekStep()),
+		themeName(s.theme),
+		s.volume/10,
+		s.shuffle,
+		repeatName(s.repeat),
+		sleepText(s.sleepMinutes),
 	)
 }
 
 func (s *appState) targetBars() []float64 {
 	if len(s.frames) == 0 {
-		return idleBars()
+		return s.ambientBars()
 	}
 	pos := s.position()
 	if s.playing && pos >= s.duration {
@@ -522,10 +919,28 @@ func (s *appState) targetBars() []float64 {
 	return s.frames[index].Bars
 }
 
+func (s *appState) ambientBars() []float64 {
+	bars := make([]float64, barCount)
+	pos := s.position().Seconds()
+	if !s.playing {
+		pos = float64(time.Now().UnixMilli()) / 1000
+	}
+	pulse := 0.5 + math.Sin(pos*2.4+s.ambientSeed)*0.5
+	for i := range bars {
+		x := float64(i)
+		low := math.Sin(pos*3.1+s.ambientSeed+x*0.17)*0.5 + 0.5
+		mid := math.Sin(pos*5.7+s.ambientSeed*0.6+x*0.31)*0.5 + 0.5
+		high := math.Sin(pos*8.3+s.ambientSeed*1.3+x*0.73)*0.5 + 0.5
+		shape := math.Sin(float64(i) / float64(barCount) * math.Pi)
+		bars[i] = clamp((low*0.45+mid*0.35+high*0.20)*(0.35+shape*0.65)+pulse*0.18, 0.04, 1)
+	}
+	return bars
+}
+
 func openWAVDialog(hwnd uintptr) (string, bool) {
 	var fileBuffer [4096]uint16
-	filter := utf16WithNULs("WAV files (*.wav)\x00*.wav\x00All files (*.*)\x00*.*\x00\x00")
-	title, _ := syscall.UTF16PtrFromString("Open a WAV file")
+	filter := utf16WithNULs("Audio files\x00*.wav;*.mp3;*.wma;*.mid;*.midi;*.aiff;*.aif;*.au;*.snd\x00WAV files (*.wav)\x00*.wav\x00MP3 files (*.mp3)\x00*.mp3\x00All files (*.*)\x00*.*\x00\x00")
+	title, _ := syscall.UTF16PtrFromString("Open an audio file")
 
 	ofn := openFileName{
 		structSize: uint32(unsafe.Sizeof(openFileName{})),
@@ -554,15 +969,20 @@ func draw(hwnd uintptr) {
 
 	width := bounds.right - bounds.left
 	height := bounds.bottom - bounds.top
-	fill(hdc, bounds, rgb(10, 12, 22))
+	palette := currentPalette()
+	fill(hdc, bounds, palette.background)
 
 	procSetBkMode.Call(hdc, transparent)
-	procSetTextColor.Call(hdc, rgb(245, 247, 255))
+	procSetTextColor.Call(hdc, palette.text)
 	textOut(hdc, 28, 24, appTitle+" Pro")
-	procSetTextColor.Call(hdc, rgb(170, 180, 205))
-	textOut(hdc, 28, 52, app.status)
-	textOut(hdc, 28, height-30, "O: open    Space: pause/play    V: visualizer    T: seek size    Left/Right: seek    R: restart    Esc: quit")
-	drawProgress(hdc, width, height)
+	if !app.mini {
+		procSetTextColor.Call(hdc, palette.dim)
+		textOut(hdc, 28, 52, app.status)
+		textOut(hdc, 28, height-30, "O open | D folder | Space play | V visualizer | G theme | P shuffle | Q repeat | F favorite | S sleep | X mini | F11 fullscreen")
+		drawButtons(hdc, width, height)
+		drawPlaylist(hdc, width, height)
+	}
+	drawProgress(hdc, width, height, palette)
 
 	bars := app.targetBars()
 	if len(app.currentBars) != len(bars) {
@@ -571,6 +991,10 @@ func draw(hwnd uintptr) {
 
 	top := int32(112)
 	bottom := height - 104
+	if app.mini {
+		top = 70
+		bottom = height - 58
+	}
 	if bottom <= top {
 		return
 	}
@@ -592,6 +1016,16 @@ func drawVisualization(hdc uintptr, bounds rect, bars []float64, mode visualMode
 		drawWaveLine(hdc, bounds, bars)
 	case modeHalo:
 		drawHalo(hdc, bounds, bars)
+	case modeSpectrum:
+		drawSpectrum(hdc, bounds, bars)
+	case modeFire:
+		drawFire(hdc, bounds, bars)
+	case modeParticles:
+		drawParticles(hdc, bounds, bars)
+	case modeTunnel:
+		drawTunnel(hdc, bounds, bars)
+	case modePlasma:
+		drawPlasma(hdc, bounds, bars)
 	default:
 		drawClassicBars(hdc, bounds, bars)
 	}
@@ -726,15 +1160,492 @@ func drawHalo(hdc uintptr, bounds rect, bars []float64) {
 	}
 }
 
-func drawProgress(hdc uintptr, width, height int32) {
+func drawSpectrum(hdc uintptr, bounds rect, bars []float64) {
+	if len(bars) == 0 {
+		return
+	}
+	bands := []uintptr{rgb(66, 220, 255), rgb(120, 255, 120), rgb(255, 220, 70), rgb(255, 88, 88)}
+	gap := int32(4)
+	width := bounds.right - bounds.left
+	barWidth := (width - gap*int32(len(bars)-1)) / int32(len(bars))
+	for i, target := range bars {
+		value := math.Pow(clamp(target, 0, 1), 0.7)
+		barHeight := int32(value * float64(bounds.bottom-bounds.top))
+		left := bounds.left + int32(i)*(barWidth+gap)
+		band := i * len(bands) / len(bars)
+		fill(hdc, rect{left: left, top: bounds.bottom - barHeight, right: left + barWidth, bottom: bounds.bottom}, bands[band])
+	}
+}
+
+func drawFire(hdc uintptr, bounds rect, bars []float64) {
+	if len(bars) == 0 {
+		return
+	}
+	const layers = 9
+	width := bounds.right - bounds.left
+	cellW := max(int32(3), width/int32(len(bars)))
+	for i, target := range bars {
+		flame := int(clamp(target, 0, 1) * layers)
+		for layer := 0; layer < layers; layer++ {
+			left := bounds.left + int32(i)*cellW
+			bottom := bounds.bottom - int32(layer)*(bounds.bottom-bounds.top)/layers
+			top := bottom - (bounds.bottom-bounds.top)/layers + 2
+			color := rgb(byte(80+layer*19), byte(20+layer*18), byte(max(0, 80-layer*10)))
+			if layer < flame {
+				fill(hdc, rect{left: left, top: top, right: left + cellW - 1, bottom: bottom}, color)
+			}
+		}
+	}
+}
+
+func drawParticles(hdc uintptr, bounds rect, bars []float64) {
+	if len(bars) == 0 {
+		return
+	}
+	cx := bounds.left + (bounds.right-bounds.left)/2
+	cy := bounds.top + (bounds.bottom-bounds.top)/2
+	now := float64(time.Now().UnixMilli()) / 700
+	for i, target := range bars {
+		angle := float64(i)/float64(len(bars))*math.Pi*2 + now*0.18
+		radius := (0.15 + target*0.82) * float64(min(bounds.right-bounds.left, bounds.bottom-bounds.top)) / 2
+		x := cx + int32(math.Cos(angle)*radius)
+		y := cy + int32(math.Sin(angle)*radius)
+		size := int32(3 + target*10)
+		ellipse(hdc, x-size, y-size, x+size, y+size, gradientColor(i, len(bars), 255))
+	}
+}
+
+func drawTunnel(hdc uintptr, bounds rect, bars []float64) {
+	if len(bars) == 0 {
+		return
+	}
+	cx := bounds.left + (bounds.right-bounds.left)/2
+	cy := bounds.top + (bounds.bottom-bounds.top)/2
+	maxR := min(bounds.right-bounds.left, bounds.bottom-bounds.top) / 2
+	now := float64(time.Now().UnixMilli()) / 800
+	for ring := 9; ring >= 1; ring-- {
+		idx := ring * len(bars) / 10
+		energy := bars[min(idx, len(bars)-1)]
+		radius := int32(float64(maxR) * (float64(ring)/10 + energy*0.06))
+		offset := int32(math.Sin(now+float64(ring)) * energy * 18)
+		line(hdc, cx-radius+offset, cy-radius, cx+radius, cy-radius+offset, gradientColor(ring, 10, 255), 2)
+		line(hdc, cx+radius, cy-radius+offset, cx+radius-offset, cy+radius, gradientColor(ring, 10, 255), 2)
+		line(hdc, cx+radius-offset, cy+radius, cx-radius, cy+radius-offset, gradientColor(ring, 10, 255), 2)
+		line(hdc, cx-radius, cy+radius-offset, cx-radius+offset, cy-radius, gradientColor(ring, 10, 255), 2)
+	}
+}
+
+func drawPlasma(hdc uintptr, bounds rect, bars []float64) {
+	if len(bars) == 0 {
+		return
+	}
+	cols := 18
+	rows := 10
+	cellW := max(int32(3), (bounds.right-bounds.left)/int32(cols))
+	cellH := max(int32(3), (bounds.bottom-bounds.top)/int32(rows))
+	now := float64(time.Now().UnixMilli()) / 520
+	for y := 0; y < rows; y++ {
+		for x := 0; x < cols; x++ {
+			idx := (x + y*cols) % len(bars)
+			energy := bars[idx]
+			wave := math.Sin(float64(x)*0.9+now) + math.Cos(float64(y)*1.2-now*0.8)
+			level := clamp((wave+2)/4*0.55+energy*0.45, 0, 1)
+			left := bounds.left + int32(x)*cellW
+			top := bounds.top + int32(y)*cellH
+			fill(hdc, rect{left: left, top: top, right: left + cellW - 2, bottom: top + cellH - 2}, rgb(byte(45+level*160), byte(40+level*80), byte(110+level*140)))
+		}
+	}
+}
+
+func drawProgress(hdc uintptr, width, height int32, palette palette) {
 	bar := progressRect(width, height)
-	fill(hdc, bar, rgb(26, 32, 51))
+	fill(hdc, bar, palette.panel)
 	progress := app.progress()
-	fill(hdc, rect{left: bar.left, top: bar.top, right: bar.left + int32(progress*float64(bar.right-bar.left)), bottom: bar.bottom}, rgb(80, 210, 255))
+	fill(hdc, rect{left: bar.left, top: bar.top, right: bar.left + int32(progress*float64(bar.right-bar.left)), bottom: bar.bottom}, palette.accent)
 	knobX := bar.left + int32(progress*float64(bar.right-bar.left))
-	fill(hdc, rect{left: knobX - 4, top: bar.top - 5, right: knobX + 4, bottom: bar.bottom + 5}, rgb(245, 247, 255))
-	procSetTextColor.Call(hdc, rgb(170, 180, 205))
-	textOut(hdc, bar.left, bar.bottom+14, "Click or drag this bar to shift through the track")
+	fill(hdc, rect{left: knobX - 4, top: bar.top - 5, right: knobX + 4, bottom: bar.bottom + 5}, palette.text)
+	if !app.mini {
+		procSetTextColor.Call(hdc, palette.dim)
+		textOut(hdc, bar.left, bar.bottom+14, "Click/drag to seek. Drop audio files anywhere.")
+	}
+}
+
+func drawButtons(hdc uintptr, width, height int32) {
+	labels := []button{
+		{label: "Open", action: "open"},
+		{label: "Prev", action: "prev"},
+		{label: playLabel(), action: "play"},
+		{label: "Next", action: "next"},
+		{label: "Viz", action: "viz"},
+		{label: "Theme", action: "theme"},
+		{label: "Shuffle", action: "shuffle"},
+		{label: "Repeat", action: "repeat"},
+		{label: "Fav", action: "favorite"},
+		{label: "Mute", action: "mute"},
+	}
+	app.buttons = app.buttons[:0]
+	palette := currentPalette()
+	left := int32(28)
+	top := int32(74)
+	for i := range labels {
+		w := int32(78)
+		b := labels[i]
+		b.bounds = rect{left: left, top: top, right: left + w, bottom: top + 28}
+		app.buttons = append(app.buttons, b)
+		fill(hdc, b.bounds, palette.panel)
+		line(hdc, b.bounds.left, b.bounds.bottom, b.bounds.right, b.bounds.bottom, palette.accent, 2)
+		procSetTextColor.Call(hdc, palette.text)
+		textOut(hdc, b.bounds.left+10, b.bounds.top+7, b.label)
+		left += w + 8
+		if left+80 > width-28 {
+			break
+		}
+	}
+}
+
+func drawPlaylist(hdc uintptr, width, height int32) {
+	if len(app.playlist) == 0 {
+		return
+	}
+	palette := currentPalette()
+	left := width - 292
+	if left < width/2 {
+		return
+	}
+	top := int32(112)
+	fill(hdc, rect{left: left, top: top, right: width - 28, bottom: height - 104}, dimColor(palette.panel, 0.75))
+	procSetTextColor.Call(hdc, palette.text)
+	textOut(hdc, left+12, top+10, fmt.Sprintf("Queue %d/%d", app.currentIndex+1, len(app.playlist)))
+	procSetTextColor.Call(hdc, palette.dim)
+	start := max(0, app.currentIndex-3)
+	for row := 0; row < 8 && start+row < len(app.playlist); row++ {
+		t := app.playlist[start+row]
+		prefix := "  "
+		if start+row == app.currentIndex {
+			prefix = "> "
+			procSetTextColor.Call(hdc, palette.accent)
+		} else {
+			procSetTextColor.Call(hdc, palette.dim)
+		}
+		fav := ""
+		if t.Favorite {
+			fav = "* "
+		}
+		textOut(hdc, left+12, top+38+int32(row*24), truncate(prefix+fav+t.Title, 34))
+	}
+}
+
+func (s *appState) handleButtonClick(x, y int32) bool {
+	for _, b := range s.buttons {
+		if pointInRect(x, y, b.bounds) {
+			switch b.action {
+			case "open":
+				if path, ok := openWAVDialog(s.hwnd); ok {
+					s.openPath(path)
+				}
+			case "prev":
+				s.previousTrack()
+			case "play":
+				s.togglePlay()
+			case "next":
+				s.nextTrack()
+			case "viz":
+				s.cycleMode()
+			case "theme":
+				s.nextTheme()
+			case "shuffle":
+				s.toggleShuffle()
+			case "repeat":
+				s.cycleRepeat()
+			case "favorite":
+				s.toggleFavorite()
+			case "mute":
+				s.toggleMute()
+			}
+			return true
+		}
+	}
+	return false
+}
+
+func (s *appState) handleDrop(drop uintptr) {
+	defer procDragFinish.Call(drop)
+	count, _, _ := procDragQueryFileW.Call(drop, ^uintptr(0), 0, 0)
+	var tracks []track
+	for i := uintptr(0); i < count; i++ {
+		var buffer [4096]uint16
+		procDragQueryFileW.Call(drop, i, uintptr(unsafe.Pointer(&buffer[0])), uintptr(len(buffer)))
+		path := syscall.UTF16ToString(buffer[:])
+		if path == "" {
+			continue
+		}
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			tracks = append(tracks, collectAudioFiles(path)...)
+		} else if isAudioFile(path) {
+			tracks = append(tracks, makeTrack(path, s.favorites))
+		}
+	}
+	if len(tracks) > 0 {
+		sortTracks(tracks)
+		s.openPlaylist(tracks, 0)
+	}
+}
+
+func collectAudioFiles(root string) []track {
+	var tracks []track
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return tracks
+	}
+	for _, entry := range entries {
+		path := filepath.Join(root, entry.Name())
+		if entry.IsDir() {
+			continue
+		}
+		if isAudioFile(path) {
+			tracks = append(tracks, makeTrack(path, app.favorites))
+		}
+	}
+	sortTracks(tracks)
+	return tracks
+}
+
+func sortTracks(tracks []track) {
+	sort.Slice(tracks, func(i, j int) bool {
+		return strings.ToLower(tracks[i].Title) < strings.ToLower(tracks[j].Title)
+	})
+}
+
+func makeTrack(path string, favorites map[string]bool) track {
+	clean := filepath.Clean(path)
+	title := strings.TrimSuffix(filepath.Base(clean), filepath.Ext(clean))
+	return track{Path: clean, Title: title, Favorite: favorites[clean]}
+}
+
+func indexOfPath(tracks []track, path string) int {
+	clean := filepath.Clean(path)
+	for i, track := range tracks {
+		if strings.EqualFold(track.Path, clean) {
+			return i
+		}
+	}
+	return -1
+}
+
+func isAudioFile(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".wav", ".mp3", ".wma", ".mid", ".midi", ".aiff", ".aif", ".au", ".snd":
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *appState) addRecent(path string) {
+	clean := filepath.Clean(path)
+	next := []string{clean}
+	for _, item := range s.recent {
+		if !strings.EqualFold(item, clean) && len(next) < 10 {
+			next = append(next, item)
+		}
+	}
+	s.recent = next
+}
+
+func (s *appState) loadSettings() {
+	s.favorites = map[string]bool{}
+	data, err := os.ReadFile(settingsPath())
+	if err != nil {
+		return
+	}
+	var cfg settings
+	if json.Unmarshal(data, &cfg) != nil {
+		return
+	}
+	s.mode = cfg.Mode % modeCount
+	s.theme = cfg.Theme % themeCount
+	s.volume = clampInt(cfg.Volume, 0, 1000)
+	if s.volume == 0 {
+		s.volume = 800
+	}
+	s.muted = cfg.Muted
+	s.repeat = cfg.Repeat % 3
+	s.shuffle = cfg.Shuffle
+	s.recent = cfg.Recent
+	s.libraryRoot = cfg.LibraryRoot
+	for _, fav := range cfg.Favorites {
+		s.favorites[filepath.Clean(fav)] = true
+	}
+}
+
+func (s *appState) saveSettings() {
+	cfg := settings{
+		Mode:        s.mode,
+		Theme:       s.theme,
+		Volume:      s.volume,
+		Muted:       s.muted,
+		Repeat:      s.repeat,
+		Shuffle:     s.shuffle,
+		Recent:      s.recent,
+		LibraryRoot: s.libraryRoot,
+	}
+	for fav, ok := range s.favorites {
+		if ok {
+			cfg.Favorites = append(cfg.Favorites, fav)
+		}
+	}
+	sort.Strings(cfg.Favorites)
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.MkdirAll(filepath.Dir(settingsPath()), 0755)
+	_ = os.WriteFile(settingsPath(), data, 0644)
+}
+
+func settingsPath() string {
+	base := os.Getenv("APPDATA")
+	if base == "" {
+		base = "."
+	}
+	return filepath.Join(base, "MusicVisualizerPro", "settings.json")
+}
+
+type palette struct {
+	background uintptr
+	panel      uintptr
+	text       uintptr
+	dim        uintptr
+	accent     uintptr
+	accent2    uintptr
+}
+
+func currentPalette() palette {
+	return paletteFor(app.theme)
+}
+
+func paletteFor(theme theme) palette {
+	switch theme {
+	case themeLava:
+		return palette{background: rgb(18, 8, 6), panel: rgb(58, 23, 18), text: rgb(255, 238, 220), dim: rgb(220, 145, 110), accent: rgb(255, 92, 40), accent2: rgb(255, 190, 40)}
+	case themeCyberpunk:
+		return palette{background: rgb(11, 8, 25), panel: rgb(36, 20, 65), text: rgb(245, 236, 255), dim: rgb(192, 135, 255), accent: rgb(255, 56, 188), accent2: rgb(55, 235, 255)}
+	case themeOcean:
+		return palette{background: rgb(4, 18, 28), panel: rgb(10, 48, 68), text: rgb(224, 248, 255), dim: rgb(112, 190, 215), accent: rgb(54, 210, 235), accent2: rgb(88, 245, 178)}
+	default:
+		return palette{background: rgb(10, 12, 22), panel: rgb(26, 32, 51), text: rgb(245, 247, 255), dim: rgb(170, 180, 205), accent: rgb(80, 210, 255), accent2: rgb(185, 90, 255)}
+	}
+}
+
+func playLabel() string {
+	if app.playing {
+		return "Pause"
+	}
+	return "Play"
+}
+
+func themeName(theme theme) string {
+	switch theme {
+	case themeLava:
+		return "Lava"
+	case themeCyberpunk:
+		return "Cyberpunk"
+	case themeOcean:
+		return "Ocean"
+	default:
+		return "Neon"
+	}
+}
+
+func repeatName(mode repeatMode) string {
+	switch mode {
+	case repeatOne:
+		return "One"
+	case repeatAll:
+		return "All"
+	default:
+		return "Off"
+	}
+}
+
+func sleepText(minutes int) string {
+	if minutes == 0 {
+		return "Off"
+	}
+	return fmt.Sprintf("%dm", minutes)
+}
+
+func pointInRect(x, y int32, r rect) bool {
+	return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
+}
+
+func truncate(text string, maxLen int) string {
+	if len(text) <= maxLen {
+		return text
+	}
+	if maxLen <= 3 {
+		return text[:maxLen]
+	}
+	return text[:maxLen-3] + "..."
+}
+
+func hashPath(path string) uint32 {
+	var hash uint32 = 2166136261
+	for _, b := range []byte(strings.ToLower(path)) {
+		hash ^= uint32(b)
+		hash *= 16777619
+	}
+	return hash
+}
+
+func writeSnapshot(path string, bars []float64, mode visualMode, theme theme) error {
+	const width = 900
+	const height = 500
+	palette := paletteFor(theme)
+	bgR, bgG, bgB := colorParts(palette.background)
+	accentR, accentG, accentB := colorParts(palette.accent)
+	var out strings.Builder
+	out.WriteString(fmt.Sprintf("P3\n%d %d\n255\n", width, height))
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			r, g, b := bgR, bgG, bgB
+			index := x * len(bars) / width
+			barHeight := int(clamp(bars[index], 0, 1) * float64(height-80))
+			switch mode {
+			case modeHalo, modeTunnel, modeParticles:
+				dx := float64(x - width/2)
+				dy := float64(y - height/2)
+				dist := math.Sqrt(dx*dx + dy*dy)
+				angle := math.Atan2(dy, dx) + math.Pi
+				idx := int(angle / (math.Pi * 2) * float64(len(bars)))
+				limit := 80 + bars[idx%len(bars)]*180
+				if dist > 90 && dist < limit {
+					r, g, b = accentR, accentG, accentB
+				}
+			default:
+				if y > height-40-barHeight && y < height-40 {
+					r, g, b = accentR, accentG, accentB
+				}
+			}
+			out.WriteString(fmt.Sprintf("%d %d %d ", r, g, b))
+		}
+		out.WriteByte('\n')
+	}
+	return os.WriteFile(path, []byte(out.String()), 0644)
+}
+
+func colorParts(color uintptr) (int, int, int) {
+	return int(color & 0xff), int((color >> 8) & 0xff), int((color >> 16) & 0xff)
+}
+
+func clampInt(value, low, high int) int {
+	if value < low {
+		return low
+	}
+	if value > high {
+		return high
+	}
+	return value
 }
 
 func (s *appState) seekFromPoint(x, y int32) bool {
@@ -820,6 +1731,16 @@ func modeName(mode visualMode) string {
 		return "Wave"
 	case modeHalo:
 		return "Halo"
+	case modeSpectrum:
+		return "Spectrum"
+	case modeFire:
+		return "Fire"
+	case modeParticles:
+		return "Particles"
+	case modeTunnel:
+		return "Tunnel"
+	case modePlasma:
+		return "Plasma"
 	default:
 		return "Classic"
 	}
@@ -827,7 +1748,7 @@ func modeName(mode visualMode) string {
 
 func openTrack(path string) error {
 	closeTrack()
-	if err := mciSend(fmt.Sprintf(`open "%s" type waveaudio alias musicvisualizer_track`, escapeMCI(path))); err != nil {
+	if err := mciSend(fmt.Sprintf(`open "%s" alias musicvisualizer_track`, escapeMCI(path))); err != nil {
 		return err
 	}
 	if err := mciSend("set musicvisualizer_track time format milliseconds"); err != nil {
@@ -838,7 +1759,7 @@ func openTrack(path string) error {
 }
 
 func playTrackFrom(pos time.Duration) error {
-	return mciSend(fmt.Sprintf("play musicvisualizer_track from %d", durationMS(pos)))
+	return mciSendNotify(fmt.Sprintf("play musicvisualizer_track from %d notify", durationMS(pos)), app.hwnd)
 }
 
 func pauseTrack() error {
@@ -864,6 +1785,33 @@ func mciSend(command string) error {
 		return nil
 	}
 	return fmt.Errorf("%s", mciError(ret))
+}
+
+func mciSendNotify(command string, hwnd uintptr) error {
+	commandPtr, err := syscall.UTF16PtrFromString(command)
+	if err != nil {
+		return err
+	}
+	ret, _, _ := procMCISendStringW.Call(uintptr(unsafe.Pointer(commandPtr)), 0, 0, hwnd)
+	if ret == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s", mciError(ret))
+}
+
+func trackDuration() (time.Duration, error) {
+	var buffer [64]uint16
+	command, _ := syscall.UTF16PtrFromString("status musicvisualizer_track length")
+	ret, _, _ := procMCISendStringW.Call(uintptr(unsafe.Pointer(command)), uintptr(unsafe.Pointer(&buffer[0])), uintptr(len(buffer)), 0)
+	if ret != 0 {
+		return 0, fmt.Errorf("%s", mciError(ret))
+	}
+	var ms int64
+	_, err := fmt.Sscanf(syscall.UTF16ToString(buffer[:]), "%d", &ms)
+	if err != nil {
+		return 0, err
+	}
+	return time.Duration(ms) * time.Millisecond, nil
 }
 
 func mciError(code uintptr) string {
