@@ -55,7 +55,18 @@ if errorlevel 1 (
 echo Built dist\music-visualizer.exe
 echo.
 echo Creating a Desktop shortcut...
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=(New-Object -COM WScript.Shell).CreateShortcut([Environment]::GetFolderPath('Desktop') + '\Music Visualizer Pro.lnk'); $s.TargetPath=(Resolve-Path 'dist\music-visualizer.exe'); $s.WorkingDirectory=(Resolve-Path 'dist'); $s.Save()"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $target=(Resolve-Path 'dist\music-visualizer.exe').Path; $workdir=(Resolve-Path 'dist').Path; $shortcut=[Environment]::GetFolderPath('Desktop') + '\Music Visualizer Pro.lnk'; $s=(New-Object -COM WScript.Shell).CreateShortcut($shortcut); $s.TargetPath=$target; $s.WorkingDirectory=$workdir; $s.Save()"
+if errorlevel 1 (
+  echo Shortcut creation failed, but the app was built successfully.
+  echo Open dist\music-visualizer.exe from this folder.
+) else (
+  echo Desktop shortcut created.
+)
 echo.
-echo Done. You can open Music Visualizer Pro from your Desktop shortcut.
+choice /C YN /M "Open Music Visualizer Pro now"
+if errorlevel 2 (
+  echo Done. You can open Music Visualizer Pro later from dist\music-visualizer.exe.
+) else (
+  start "" "dist\music-visualizer.exe"
+)
 pause
