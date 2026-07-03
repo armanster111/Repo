@@ -51,6 +51,9 @@ func (s *appState) loadTrackMedia(path string) {
 	s.meta = trackMeta{Title: info.Title, Artist: info.Artist, Album: info.Album}
 	s.lyricLines = lyrics.Load(path)
 	s.artGrid = metadata.ArtGridFromBytes(art, 12, 8)
+	if app.ultra != nil {
+		app.ultra.syncArtTint(s.artGrid)
+	}
 	s.fetchLyricsAsync()
 }
 
@@ -62,14 +65,14 @@ func (s *appState) buildFramesForPath(path string) ([]visual.Frame, time.Duratio
 		if err != nil {
 			return nil, 0
 		}
-		frames := visual.BuildFrames(audioData.Mono, audioData.SampleRate, fps, barCount)
+		frames := visual.BuildFramesFFT(audioData.Mono, audioData.SampleRate, fps, barCount)
 		return frames, time.Duration(audioData.DurationSeconds() * float64(time.Second))
 	case ".mp3":
 		mono, sampleRate, err := audio.DecodeFileMP3(path)
 		if err != nil || len(mono) == 0 {
 			return nil, 0
 		}
-		frames := visual.BuildFrames(mono, sampleRate, fps, barCount)
+		frames := visual.BuildFramesFFT(mono, sampleRate, fps, barCount)
 		duration := time.Duration(float64(len(mono)) / float64(sampleRate) * float64(time.Second))
 		return frames, duration
 	default:

@@ -1,105 +1,67 @@
-# Music Visualizer Pro
+# Music Visualizer Ultra
 
-A native Windows music player and visualizer with playlists, MP3/WAV playback, desktop audio capture, themes, lyrics, album-art backgrounds, library scanning, presets, OBS overlay, DJ mode, and remote control.
+The most advanced standalone Windows music visualizer — **60 FPS**, **FFT spectrum analysis**, **19 visual modes**, cinema showcase, OBS overlay, library, lyrics, DJ mode, and LAN remote control. One `.exe`, no install.
 
-## Quick start (Windows)
+## Download
 
-1. Download **`MusicVisualizerPro-Windows.zip`**
-2. Extract it anywhere
-3. Double-click **`MusicVisualizerPro.exe`**
+1. **[MusicVisualizerPro-Windows.zip](https://github.com/armanster111/Repo/raw/cursor/music-visualizer-exe-7b99/dist/MusicVisualizerPro-Windows.zip)**
+2. Extract → double-click **`MusicVisualizerPro.exe`**
 
-Direct download:
+Direct EXE: https://github.com/armanster111/Repo/raw/cursor/music-visualizer-exe-7b99/dist/MusicVisualizerPro.exe
 
-- ZIP: `https://github.com/armanster111/Repo/raw/cursor/music-visualizer-exe-7b99/dist/MusicVisualizerPro-Windows.zip`
-- EXE: `https://github.com/armanster111/Repo/raw/cursor/music-visualizer-exe-7b99/dist/MusicVisualizerPro.exe`
+---
 
-If Windows SmartScreen warns about an unsigned app, choose **More info → Run anyway**.
+## What makes it best-in-class
 
-## v2 features
+| Feature | Details |
+|--------|---------|
+| **60 FPS** | Silky-smooth rendering with double-buffered output |
+| **FFT spectrum** | Real frequency analysis (log-spaced 64 bands) for MP3, WAV, and desktop audio |
+| **19 visual modes** | Including Neon City, Supernova, Liquid, Orbit, Waveform 3D, Kaleidoscope, Aurora, and more |
+| **Motion trails & bloom** | Afterglow trails + peak-hold glow on every mode |
+| **Beat detection** | Spectral-flux onset detection for punchy beat hits |
+| **Cinema mode** | **F9** — fullscreen auto-cycling premium visuals every 12 seconds |
+| **Album-reactive colors** | Palette tints from album art automatically |
+| **Desktop audio** | WASAPI loopback with FFT — visualizes Spotify, YouTube, games |
+| **OBS overlay** | **1** — transparent topmost window for streamers |
+| **Online lyrics** | Auto-fetch + karaoke overlay |
+| **Music library** | Artist/album/top-played views with click-to-play |
+| **Presets & packs** | Save/share looks; drop JSON packs in `%APPDATA%\MusicVisualizerPro\packs\` |
+| **DJ mode** | Dual-deck crossfader |
+| **Remote** | http://localhost:8765 |
 
-### Music library
-- Auto-scans `Music`, `Downloads`, and your last playlist folder on startup
-- **Library / Artists / Albums / Top Played** panels (`\` cycles views, **Lib** button)
-- Click tracks in the right panel to play
-- Play counts saved and used for smart "Top Played" list
+---
 
-### Visualizers (14 modes)
-Classic, Mirror, Blocks, Wave, Halo, Spectrum, Fire, Particles, Tunnel, Plasma, **Aurora**, **Mandala**, **Starfield**, **Kaleidoscope**
-
-### Presets & plugin packs
-- **8** cycle preset | **9** save preset | **5** import from Desktop
-- Presets saved to `%APPDATA%\MusicVisualizerPro\presets.json`
-- Drop JSON packs in `%APPDATA%\MusicVisualizerPro\packs\`
-- **0** auto-preset (mood-based switching)
-
-### Lyrics
-- Local `.lrc` sidecar files
-- **Auto-fetch** synced lyrics online (LRCLIB) when a track loads
-- **)** toggle karaoke overlay
-
-### Streamer / OBS
-- **1** toggle semi-transparent topmost overlay window (visualizer only)
-- **2** streamer frame capture notes
-- **6** party mode (kaleidoscope + karaoke + boosted visuals)
-
-### Audio enhancements
-- Software 3-band visual EQ (bass/mid/treble affects bars)
-- **=** crossfade between tracks
-- BPM + mood detection in status line
-
-### DJ mode
-- **~** toggle DJ mode
-- **;** load current track to deck B
-- **,** / **.** move crossfader
-
-### Remote control
-- Open **http://localhost:8765** on your PC or phone (same Wi‑Fi)
-- Play/pause/next/prev from browser
-- **4** export sync bundle (favorites, presets, play counts) to Desktop
-
-### UI
-- **3** settings panel
-- Clickable playlist rows
-- Volume slider (top right)
-- **`** ambient mode (slow, dim fullscreen visuals)
-
-## Core features
-
-- Opens or drag-drops audio files and folders
-- Plays `.wav`, `.mp3`, `.wma`, `.mid`, `.aiff`, `.au`, `.snd`, `.flac`, `.ogg` (library scan)
-- **Desktop Input** — WASAPI loopback from Windows speakers (**I**)
-- Playlists, shuffle, repeat, favorites, recent, search
-- Album art blurred background, `.lrc` lyrics
-- Built-in themes + 5 custom saved themes (**H**)
-- System tray, EQ, playback speed, visual-only fullscreen
-- Settings in `%APPDATA%\MusicVisualizerPro\settings.json`
-
-## Keyboard shortcuts
+## Quick controls
 
 | Key | Action |
 |-----|--------|
-| `O` | Open file |
-| `Space` | Play/pause |
-| `V` | Cycle visualizer |
-| `G` | Next theme |
-| `I` | Desktop input |
-| `1` | OBS overlay |
-| `2` | Streamer capture |
-| `3` | Settings panel |
-| `6` | Party mode |
-| `7` | Rescan library |
-| `8` / `9` | Cycle / save preset |
-| `0` | Auto-preset |
-| `\` | Cycle library panels |
-| `)` | Karaoke lyrics |
-| `` ` `` | Ambient mode |
-| `~` | DJ mode |
-| `=` | Crossfade |
-| `,` / `.` | DJ crossfader |
-| `;` | Load DJ deck B |
-| `U` / `Y` / `/` | Recent / favorites / search |
-| `Z` | Visual-only |
-| `Esc` | Quit |
+| **F9** | Cinema showcase (best demo mode) |
+| **V** | Cycle 19 visualizers |
+| **I** | Desktop audio input |
+| **1** | OBS overlay |
+| **3** | Settings panel |
+| **7** | Rescan library |
+| **8** / **9** | Cycle / save preset |
+| **6** | Party mode |
+| **Z** | Visual-only fullscreen |
+| **Space** | Play/pause |
+
+---
+
+## Visual modes (press V)
+
+Classic · Mirror · Blocks · Wave · Halo · Spectrum · Fire · Particles · Tunnel · Plasma · Aurora · Mandala · Starfield · Kaleidoscope · **Neon City** · **Supernova** · **Liquid** · **Orbit** · **Waveform 3D**
+
+---
+
+## For streamers
+
+1. Press **F9** for cinema mode (looks incredible on stream)
+2. Press **1** for OBS overlay window
+3. Add Window Capture in OBS → pick "Music Visualizer Overlay"
+
+---
 
 ## Build from source (optional)
 
@@ -107,8 +69,6 @@ Classic, Mirror, Blocks, Wave, Halo, Spectrum, Fire, Particles, Tunnel, Plasma, 
 build-windows.bat
 ```
 
-## Notes
+---
 
-- MP3/WAV get real waveform analysis; other formats use animated visualizers via MCI playback
-- Desktop input visualizes Spotify, YouTube, games, etc.
-- Place a matching `.lrc` next to a song for offline synced lyrics
+SmartScreen may warn on unsigned apps → **More info → Run anyway**.

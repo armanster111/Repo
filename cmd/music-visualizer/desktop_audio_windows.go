@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/armanster111/music-visualizer/internal/visual"
 )
 
 const (
@@ -64,6 +66,8 @@ type waveFormat struct {
 type desktopInput struct {
 	mu          sync.RWMutex
 	bars        []float64
+	ring        []float64
+	sampleRate  int
 	active      bool
 	lastErr     error
 	stop        chan struct{}
@@ -197,6 +201,9 @@ func (d *desktopInput) runLoopback(stop <-chan struct{}) error {
 	}
 	defer procCoTaskMemFree.Call(formatPtr)
 	format := parseWaveFormat(formatPtr)
+	d.mu.Lock()
+	d.sampleRate = int(format.samplesPerSec)
+	d.mu.Unlock()
 
 	hr, _, _ = comCall(audioClient, 3, audioShareModeShared, audioStreamLoopback, loopbackBuffer100NS, 0, formatPtr, 0)
 	if failedHRESULT(hr) {
@@ -270,20 +277,30 @@ func (d *desktopInput) runLoopback(stop <-chan struct{}) error {
 func (d *desktopInput) updateBars(samples []float64) {
 	target := make([]float64, barCount)
 	if len(samples) > 0 {
-		for i := range target {
-			start := i * len(samples) / barCount
-			end := (i + 1) * len(samples) / barCount
-			if end <= start {
-				end = start + 1
+		d.mu.Lock()
+		d.ring = append(d.ring, samples...)
+		if len(d.ring) > 8192 {
+			d.ring = append([]float64(nil), d.ring[len(d.ring)-8192:]...)
+		}
+		sr := d.sampleRate
+		ring := append([]float64(nil), d.ring...)
+		d.mu.Unlock()
+		if sr <= 0 {
+			sr = 44100
+		}
+		windowSize := 2048
+		if len(ring) >= 512 {
+			window := ring
+			if len(window) > windowSize {
+				window = window[len(window)-windowSize:]
 			}
-			if end > len(samples) {
-				end = len(samples)
+			padded := make([]float64, windowSize)
+			copy(padded[windowSize-len(window):], window)
+			if fftBars := visual.AnalyzeWindow(padded, sr, barCount); fftBars != nil {
+				for i, v := range fftBars {
+					target[i] = math.Min(1, v*3.0*d.sensitivity)
+				}
 			}
-			var sum float64
-			for _, sample := range samples[start:end] {
-				sum += sample * sample
-			}
-			target[i] = math.Min(1, math.Sqrt(sum/float64(end-start))*3.2*d.sensitivity)
 		}
 		normalizeLiveBars(target)
 	}

@@ -25,8 +25,8 @@ import (
 
 const (
 	appTitle = "Music Visualizer"
-	fps      = 30
-	barCount = 48
+	fps      = 60
+	barCount = 64
 
 	cwUseDefault       = 0x80000000
 	wsOverlappedWindow = 0x00cf0000
@@ -60,6 +60,7 @@ const (
 	vkDown           = 0x28
 	vkSpace          = 0x20
 	vkF11            = 0x7a
+	vkF9             = 0x78
 	vkMediaNext      = 0xb0
 	vkMediaPrev      = 0xb1
 	vkMediaStop      = 0xb2
@@ -156,6 +157,11 @@ const (
 	modeMandala
 	modeStarfield
 	modeKaleidoscope
+	modeNeonCity
+	modeSupernova
+	modeLiquid
+	modeOrbit
+	modeWaveform3D
 	modeCount
 )
 
@@ -331,6 +337,7 @@ type appState struct {
 	gifRecording       bool
 	gifFrameCount      int
 	lyricsFetching     bool
+	ultra              *ultraEngine
 }
 
 var app = &appState{
@@ -347,6 +354,7 @@ var app = &appState{
 	djCrossfader:       0.5,
 	crossfadeLevel:     1.0,
 	desktop:            newDesktopInput(),
+	ultra:              newUltraEngine(),
 }
 
 type point struct {
@@ -509,6 +517,9 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		app.tickCrossfade()
 		app.applyCrossfadeVolume()
 		app.captureGifFrame()
+		if app.ultra != nil {
+			app.ultra.tickShowcase()
+		}
 		if app.modeBlend < 1 {
 			app.modeBlend += 0.1
 		}
@@ -539,6 +550,10 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 			app.togglePlay()
 		case vkF11:
 			app.toggleFullscreen()
+		case vkF9:
+			if app.ultra != nil {
+				app.ultra.toggleShowcase()
+			}
 		case vkMediaNext:
 			app.nextTrack()
 		case vkMediaPrev:
@@ -1284,11 +1299,14 @@ func draw(hwnd uintptr) {
 
 func drawFrame(hdc uintptr, width, height int32) {
 	palette := currentPalette()
+	if app.ultra != nil && app.ultra.artTintOn && app.artGrid != nil {
+		palette = app.ultra.artTint
+	}
 	fill(hdc, rect{left: 0, top: 0, right: width, bottom: height}, palette.background)
 
 	procSetBkMode.Call(hdc, transparent)
 	procSetTextColor.Call(hdc, palette.text)
-	textOut(hdc, 28, 24, appTitle+" Pro")
+	textOut(hdc, 28, 24, appTitle+" Ultra")
 	if !app.mini && !app.visualOnly {
 		procSetTextColor.Call(hdc, palette.dim)
 		hasMeta := app.meta.Title != ""
@@ -1302,7 +1320,7 @@ func drawFrame(hdc uintptr, width, height int32) {
 		} else {
 			textOut(hdc, 28, 52, app.status)
 		}
-		textOut(hdc, 28, height-30, "O open | 1 overlay | 3 settings | 7 library | 8 preset | \\ panels | 0 auto-preset")
+		textOut(hdc, 28, height-30, "F9 cinema | 1 OBS | 3 settings | 7 library | 8 preset | V viz")
 		drawButtons(hdc, width, height)
 		app.drawVolumeSlider(hdc, width, height, palette)
 		drawPlaylist(hdc, width, height)
@@ -1323,11 +1341,26 @@ func drawFrame(hdc uintptr, width, height int32) {
 	if app.ambientMode {
 		intensity *= 0.65
 	}
-	for i := range bars {
-		bars[i] = math.Min(1, bars[i]*beat*intensity)
-	}
-	if len(app.currentBars) != len(bars) {
-		app.currentBars = make([]float64, len(bars))
+	if app.ultra != nil {
+		bars = app.ultra.processBars(bars, intensity, beat)
+		app.currentBars = bars
+	} else {
+		for i := range bars {
+			bars[i] = math.Min(1, bars[i]*beat*intensity)
+		}
+		if len(app.currentBars) != len(bars) {
+			app.currentBars = make([]float64, len(bars))
+		}
+		smooth := 0.35
+		if app.modeBlend < 1 {
+			smooth = 0.18
+		}
+		if app.ambientMode {
+			smooth = 0.12
+		}
+		for i, target := range bars {
+			app.currentBars[i] += (target - app.currentBars[i]) * smooth
+		}
 	}
 
 	top := int32(112)
@@ -1344,17 +1377,11 @@ func drawFrame(hdc uintptr, width, height int32) {
 	if app.artGrid != nil && !app.visualOnly {
 		drawAlbumArtBackground(hdc, visualBounds, app.artGrid)
 	}
-	smooth := 0.35
-	if app.modeBlend < 1 {
-		smooth = 0.18
+	if app.ultra != nil {
+		drawWithEffects(hdc, visualBounds, app.currentBars, app.ultra.peakBars(), app.ultra.trailFrames(), app.mode)
+	} else {
+		drawVisualization(hdc, visualBounds, app.currentBars, app.mode)
 	}
-	if app.ambientMode {
-		smooth = 0.12
-	}
-	for i, target := range bars {
-		app.currentBars[i] += (target - app.currentBars[i]) * smooth
-	}
-	drawVisualization(hdc, visualBounds, app.currentBars, app.mode)
 }
 
 func drawVisualization(hdc uintptr, bounds rect, bars []float64, mode visualMode) {
@@ -1385,6 +1412,16 @@ func drawVisualization(hdc uintptr, bounds rect, bars []float64, mode visualMode
 		drawStarfield(hdc, bounds, bars)
 	case modeKaleidoscope:
 		drawKaleidoscope(hdc, bounds, bars)
+	case modeNeonCity:
+		drawNeonCity(hdc, bounds, bars)
+	case modeSupernova:
+		drawSupernova(hdc, bounds, bars)
+	case modeLiquid:
+		drawLiquid(hdc, bounds, bars)
+	case modeOrbit:
+		drawOrbit(hdc, bounds, bars)
+	case modeWaveform3D:
+		drawWaveform3D(hdc, bounds, bars)
 	default:
 		drawClassicBars(hdc, bounds, bars)
 	}
@@ -2258,6 +2295,16 @@ func modeName(mode visualMode) string {
 		return "Starfield"
 	case modeKaleidoscope:
 		return "Kaleidoscope"
+	case modeNeonCity:
+		return "Neon City"
+	case modeSupernova:
+		return "Supernova"
+	case modeLiquid:
+		return "Liquid"
+	case modeOrbit:
+		return "Orbit"
+	case modeWaveform3D:
+		return "Waveform 3D"
 	default:
 		return "Classic"
 	}
