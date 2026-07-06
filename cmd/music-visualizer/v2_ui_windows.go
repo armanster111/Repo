@@ -73,6 +73,9 @@ func (s *appState) toggleAutoPreset() {
 
 func (s *appState) toggleSettingsPanel() {
 	s.showSettings = !s.showSettings
+	if s.showSettings {
+		s.showHelp = false
+	}
 	invalidate()
 }
 
@@ -124,24 +127,26 @@ func (s *appState) handleVolumeSlider(x, y int32) bool {
 
 func (s *appState) handlePlaylistClick(x, y int32) bool {
 	for i, r := range s.playlistRowBounds {
-		if pointInRect(x, y, r) {
-			list := s.filteredPlaylist()
-			if i < len(list) {
-				s.openPath(list[i].Path)
-				return true
-			}
-			entries := s.libraryEntriesForPanel()
-			groups := s.libraryGroupsForPanel()
-			if len(groups) > 0 && i < len(groups) {
-				s.panelGroupKey = groups[i]
-				s.panelRow = 0
-				invalidate()
-				return true
-			}
-			if i < len(entries) {
-				s.openLibraryEntry(entries[i])
-				return true
-			}
+		if !pointInRect(x, y, r) {
+			continue
+		}
+		idx := s.panelRow + i
+		list := s.filteredPlaylist()
+		if len(list) > 0 && idx < len(list) {
+			s.openPath(list[idx].Path)
+			return true
+		}
+		entries := s.libraryEntriesForPanel()
+		groups := s.libraryGroupsForPanel()
+		if len(groups) > 0 && idx < len(groups) {
+			s.panelGroupKey = groups[idx]
+			s.panelRow = 0
+			invalidate()
+			return true
+		}
+		if idx < len(entries) {
+			s.openLibraryEntry(entries[idx])
+			return true
 		}
 	}
 	return false

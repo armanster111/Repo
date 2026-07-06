@@ -73,12 +73,18 @@ func (s *appState) togglePartyMode() {
 	if s.partyMode {
 		s.partyMode = false
 		s.karaokeMode = false
-		s.visualIntensity = 1.0
+		s.mode = s.partyPrevMode
+		s.visualIntensity = s.partyPrevIntensity
+		if s.visualIntensity <= 0 {
+			s.visualIntensity = 1.0
+		}
 		s.status = "Party mode off."
 		s.saveSettings()
 		invalidate()
 		return
 	}
+	s.partyPrevMode = s.mode
+	s.partyPrevIntensity = s.visualIntensity
 	s.partyMode = true
 	s.visualIntensity = 1.45
 	s.karaokeMode = true

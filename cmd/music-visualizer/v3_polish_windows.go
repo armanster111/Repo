@@ -107,13 +107,11 @@ func (s *appState) restoreOverlayIfNeeded() {
 }
 
 func (s *appState) handleVisualizerDoubleClick(x, y, width, height int32) bool {
-	top := int32(112)
-	bottom := height - 104
+	chrome := layoutFor(app.uiStyle, width, height)
+	area := chrome.visualBounds(width, height)
 	if app.mini || app.visualOnly {
-		top = 28
-		bottom = height - 28
+		area = rect{left: 28, top: 28, right: width - 28, bottom: height - 28}
 	}
-	area := rect{left: 28, top: top, right: width - 28, bottom: bottom}
 	if !pointInRect(x, y, area) {
 		return false
 	}

@@ -27,7 +27,7 @@ var remoteMu sync.Mutex
 var remoteServer *http.Server
 
 func (s *appState) startRemoteControl() {
-	if s.remoteEnabled {
+	if remoteServer != nil {
 		return
 	}
 	mux := http.NewServeMux()
@@ -68,7 +68,7 @@ button{margin:6px;padding:10px 16px;font-size:16px}</style></head><body>
 <script>setInterval(()=>location.reload(),3000)</script></body></html>`,
 			st.Title, st.Artist, modeName(s.mode), st.Mood, st.BPM)
 	})
-	remoteServer = &http.Server{Addr: ":8765", Handler: mux}
+	remoteServer = &http.Server{Addr: "127.0.0.1:8765", Handler: mux}
 	s.remoteEnabled = true
 	go func() {
 		if err := remoteServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {

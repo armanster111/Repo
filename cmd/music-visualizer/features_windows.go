@@ -258,8 +258,8 @@ func (s *appState) showOnboardingIfNeeded() {
 	}
 	s.seenOnboarding = true
 	s.saveSettings()
-	showMessage(s.hwnd, appTitle+" Pro",
-		"Welcome to Music Visualizer Pro v2!\n\nLibrary scan starts automatically.\n1 OBS overlay | 3 settings | 7 rescan library\n8 cycle preset | 9 save preset | 6 party mode\nRemote control: http://localhost:8765\n\nO open | I desktop | V viz | Z visual-only",
+	showMessage(s.hwnd, appTitle+" Ultra",
+		"Welcome!\n\nF1 = full shortcut list\nF8 = UI styles | F9 = cinema | 3 = settings\nV = visualizer | G = color theme | 1 = OBS overlay\n2 = GIF export | * = video export | C = PNG snapshot\n\nDrop audio anywhere to start. Remote: http://127.0.0.1:8765",
 		0)
 }
 
