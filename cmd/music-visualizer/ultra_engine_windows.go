@@ -81,17 +81,29 @@ func (e *ultraEngine) tickShowcase() {
 	app.updateStatus()
 }
 
-func (e *ultraEngine) toggleShowcase() {
-	e.showcase = !e.showcase
-	if e.showcase {
-		app.visualOnly = true
-		procShowWindow.Call(app.hwnd, swShowMaximized)
-		app.mode = modeSupernova
-		e.showcaseAt = time.Now()
-		app.status = "Cinema showcase — auto-cycles premium visuals every 12s. F9 to exit."
-	} else {
-		app.status = "Cinema showcase off."
+func (e *ultraEngine) exitShowcase() {
+	if !e.showcase {
+		return
 	}
+	e.showcase = false
+	app.visualOnly = false
+	procShowWindow.Call(app.hwnd, swShowNormal)
+	app.status = "Cinema showcase off."
+	app.updateStatus()
+	invalidate()
+}
+
+func (e *ultraEngine) toggleShowcase() {
+	if e.showcase {
+		e.exitShowcase()
+		return
+	}
+	e.showcase = true
+	app.visualOnly = true
+	procShowWindow.Call(app.hwnd, swShowMaximized)
+	app.mode = modeSupernova
+	e.showcaseAt = time.Now()
+	app.status = "Cinema showcase — auto-cycles premium visuals. Esc or F9 to exit."
 	invalidate()
 }
 

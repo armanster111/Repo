@@ -46,6 +46,7 @@ const (
 	wmLButtonDown = 0x0201
 	wmLButtonUp   = 0x0202
 	wmDropFiles   = 0x0233
+	wmNCHitTest   = 0x0084
 	wmApp         = 0x8000
 	wmMciNotify   = wmApp + 1
 
@@ -533,7 +534,7 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 	case wmKeyDown:
 		switch wParam {
 		case vkEscape:
-			procDestroyWindow.Call(hwnd)
+			app.handleEscapeKey()
 		case vkEnd:
 			app.nextTrack()
 		case vkHome:

@@ -15,12 +15,15 @@ import (
 const (
 	wsExLayered      = 0x00080000
 	wsExTopmost      = 0x00000008
-	wsExTransparent  = 0x00000020
 	wsExToolwindow   = 0x00000080
 	wsPopup          = 0x80000000
+	wsCaption        = 0x00C00000
+	wsSysMenu        = 0x00080000
+	wsMinimizeBox    = 0x00020000
 	lwaAlpha         = 0x00000002
 	swpShowWindow    = 0x0040
-	hwndTopmost      = ^uintptr(0)
+	htClient         = 1
+	htCaption        = 2
 )
 
 var (
@@ -37,6 +40,18 @@ func overlayWndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr
 		return 0
 	case wmEraseBkgnd:
 		return 1
+	case wmKeyDown:
+		if wParam == vkEscape {
+			app.closeOverlay()
+			return 0
+		}
+		return 0
+	case wmNCHitTest:
+		ret, _, _ := procDefWindowProcW.Call(hwnd, uintptr(message), wParam, lParam)
+		if ret == htClient {
+			return htCaption
+		}
+		return ret
 	case wmPaint:
 		drawOverlay(hwnd)
 		return 0
@@ -77,7 +92,7 @@ func (s *appState) openOverlay() {
 		wsExLayered|wsExTopmost|wsExToolwindow,
 		uintptr(unsafe.Pointer(className)),
 		uintptr(unsafe.Pointer(title)),
-		wsPopup,
+		wsPopup|wsCaption|wsSysMenu|wsMinimizeBox,
 		100, 100, 900, 500,
 		0, 0, instance, 0,
 	)
@@ -91,7 +106,7 @@ func (s *appState) openOverlay() {
 	s.overlayHWND = hwnd
 	s.overlayMode = true
 	procShowWindow.Call(hwnd, swShowDefault)
-	s.status = "OBS overlay on (topmost, semi-transparent). Press 1 to toggle."
+	s.status = "OBS overlay on — drag title bar to move. Esc or 1 to close."
 	invalidate()
 }
 
