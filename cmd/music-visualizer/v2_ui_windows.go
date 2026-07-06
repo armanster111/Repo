@@ -94,17 +94,13 @@ func formatFloat(v float64) string {
 	return itoa(int(v * 100)) + "%"
 }
 
-func volumeSliderRect(width, height int32) rect {
-	return rect{left: width - 260, top: 74, right: width - 40, bottom: 88}
-}
-
-func (s *appState) drawVolumeSlider(hdc uintptr, width, height int32, palette palette) {
+func (s *appState) drawVolumeSlider(hdc uintptr, width int32, palette palette, chrome uiChromeLayout) {
 	if app.mini || app.visualOnly {
 		return
 	}
-	bar := volumeSliderRect(width, height)
+	bar := volumeSliderRectFor(chrome, width)
 	s.volumeSliderBounds = bar
-	fill(hdc, bar, palette.panel)
+	fillPanel(hdc, bar, palette, chrome)
 	level := float64(s.volume) / 1000
 	fill(hdc, rect{left: bar.left, top: bar.top, right: bar.left + int32(level*float64(bar.right-bar.left)), bottom: bar.bottom}, palette.accent2)
 	procSetTextColor.Call(hdc, palette.dim)

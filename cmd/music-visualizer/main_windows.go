@@ -64,6 +64,7 @@ const (
 	vkDown           = 0x28
 	vkSpace          = 0x20
 	vkF11            = 0x7a
+	vkF8             = 0x77
 	vkF9             = 0x78
 	vkMediaNext      = 0xb0
 	vkMediaPrev      = 0xb1
@@ -234,6 +235,7 @@ type settings struct {
 	AutoPreset         bool          `json:"auto_preset"`
 	DJMode             bool          `json:"dj_mode"`
 	VisualIntensity    float64       `json:"visual_intensity"`
+	UIStyle            int           `json:"ui_style"`
 	PanelGroup         string        `json:"panel_group"`
 	PanelGroupKey      string        `json:"panel_group_key"`
 }
@@ -339,6 +341,9 @@ type appState struct {
 	remoteEnabled      bool
 	autoPreset         bool
 	visualIntensity    float64
+	uiStyle            uiStyle
+	uiLayout           uiChromeLayout
+	uiStylePreviewBounds []rect
 	playCounts         map[string]int
 	lastPlayed         map[string]int64
 	libraryPaths       []string
@@ -592,6 +597,8 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 			app.togglePlay()
 		case vkF11:
 			app.toggleFullscreen()
+		case vkF8:
+			app.cycleUIStyle()
 		case vkF9:
 			if app.ultra != nil {
 				app.ultra.toggleShowcase()
@@ -734,6 +741,9 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		x, y := mousePoint(lParam)
 		app.noteMouseActivity()
 		if app.handleSettingsClick(x, y) {
+			return 0
+		}
+		if app.handleUIStyleClick(x, y) {
 			return 0
 		}
 		if app.handleIntensitySlider(x, y) {
@@ -1375,17 +1385,21 @@ func draw(hwnd uintptr) {
 
 func drawFrame(hdc uintptr, width, height int32) {
 	palette := currentPalette()
-	if app.ultra != nil && app.ultra.artTintOn && app.artGrid != nil {
+	if app.ultra != nil && app.ultra.artTintOn && app.artGrid != nil && app.uiStyle != uiStyleLight {
 		palette = app.ultra.artTint
 	}
+	palette = uiPaletteForStyle(app.uiStyle, palette)
+	app.uiLayout = layoutFor(app.uiStyle, width, height)
+	chrome := app.uiLayout
+
 	fill(hdc, rect{left: 0, top: 0, right: width, bottom: height}, palette.background)
 
 	procSetBkMode.Call(hdc, transparent)
 	procSetTextColor.Call(hdc, palette.text)
-	textOut(hdc, 28, 24, appTitle+" Ultra")
+	textOut(hdc, chrome.marginL, chrome.titleY, appTitle+" Ultra")
 	if app.ultra != nil && app.ultra.showcase && !app.cinemaUIVisible() {
 		procSetTextColor.Call(hdc, palette.dim)
-		textOut(hdc, 28, height-36, "Cinema mode — move mouse for controls, Esc to exit, F9 toggle")
+		textOut(hdc, chrome.marginL, height-36, "Cinema mode — move mouse for controls, Esc to exit, F9 toggle")
 	} else if !app.mini && !app.visualOnly {
 		procSetTextColor.Call(hdc, palette.dim)
 		hasMeta := app.meta.Title != ""
@@ -1394,23 +1408,29 @@ func drawFrame(hdc uintptr, width, height int32) {
 			if line := app.currentLyric(); line != "" {
 				metaLine += " | " + line
 			}
-			textOut(hdc, 28, 52, metaLine)
-			textOut(hdc, 28, 68, app.status)
+			textOut(hdc, chrome.marginL, chrome.metaY, metaLine)
+			if chrome.metaY != chrome.statusY {
+				textOut(hdc, chrome.marginL, chrome.statusY, app.status)
+			}
 		} else {
-			textOut(hdc, 28, 52, app.status)
+			textOut(hdc, chrome.marginL, chrome.statusY, app.status)
 		}
-		textOut(hdc, 28, height-30, "F9 cinema | 1 OBS | 3 settings | 7 library | 8 preset | V viz")
-		drawButtons(hdc, width, height)
-		app.drawVolumeSlider(hdc, width, height, palette)
-		drawPlaylist(hdc, width, height)
-		app.drawSettingsPanel(hdc, width, height, palette)
+		if chrome.showHints {
+			textOut(hdc, chrome.marginL, height-30, "F8 UI style | F9 cinema | 1 OBS | 3 settings | V viz")
+		}
+		drawButtons(hdc, width, height, palette, chrome)
+		if chrome.showVolume {
+			app.drawVolumeSlider(hdc, width, palette, chrome)
+		}
+		drawPlaylist(hdc, width, height, palette, chrome)
+		app.drawSettingsPanel(hdc, width, height, palette, chrome)
 	}
 	if line := app.karaokeLine(); line != "" && !app.visualOnly {
 		procSetTextColor.Call(hdc, palette.accent2)
-		textOut(hdc, 28, height-52, line)
+		textOut(hdc, chrome.marginL, height-52, line)
 	}
 	if !app.visualOnly {
-		drawProgress(hdc, width, height, palette)
+		drawProgress(hdc, width, palette, chrome)
 	}
 
 	bars := app.targetBars()
@@ -1442,8 +1462,8 @@ func drawFrame(hdc uintptr, width, height int32) {
 		}
 	}
 
-	top := int32(112)
-	bottom := height - 104
+	top := chrome.vizTop
+	bottom := chrome.vizBottom
 	if app.mini || app.visualOnly {
 		top = 28
 		bottom = height - 28
@@ -1452,7 +1472,7 @@ func drawFrame(hdc uintptr, width, height int32) {
 		return
 	}
 
-	visualBounds := rect{left: 28, top: top, right: width - 28, bottom: bottom}
+	visualBounds := chrome.visualBounds(width, height)
 	if app.artGrid != nil && !app.visualOnly {
 		drawAlbumArtBackground(hdc, visualBounds, app.artGrid)
 	}
@@ -1737,20 +1757,20 @@ func drawPlasma(hdc uintptr, bounds rect, bars []float64) {
 	}
 }
 
-func drawProgress(hdc uintptr, width, height int32, palette palette) {
-	bar := progressRect(width, height)
-	fill(hdc, bar, palette.panel)
+func drawProgress(hdc uintptr, width int32, palette palette, chrome uiChromeLayout) {
+	bar := chrome.progressBar(width)
+	fillPanel(hdc, bar, palette, chrome)
 	progress := app.progress()
 	fill(hdc, rect{left: bar.left, top: bar.top, right: bar.left + int32(progress*float64(bar.right-bar.left)), bottom: bar.bottom}, palette.accent)
 	knobX := bar.left + int32(progress*float64(bar.right-bar.left))
 	fill(hdc, rect{left: knobX - 4, top: bar.top - 5, right: knobX + 4, bottom: bar.bottom + 5}, palette.text)
-	if !app.mini {
+	if chrome.showHints && !app.mini {
 		procSetTextColor.Call(hdc, palette.dim)
 		textOut(hdc, bar.left, bar.bottom+14, "Click/drag to seek. Drop audio files anywhere.")
 	}
 }
 
-func drawButtons(hdc uintptr, width, height int32) {
+func drawButtons(hdc uintptr, width, height int32, palette palette, chrome uiChromeLayout) {
 	labels := []button{
 		{label: "Open", action: "open"},
 		{label: "Prev", action: "prev"},
@@ -1768,26 +1788,30 @@ func drawButtons(hdc uintptr, width, height int32) {
 		{label: "Mute", action: "mute"},
 	}
 	app.buttons = app.buttons[:0]
-	palette := currentPalette()
-	left := int32(28)
-	top := int32(74)
+	left := chrome.marginL
+	top := chrome.buttonTop
 	for i := range labels {
-		w := int32(78)
+		w := chrome.buttonW
+		if left+w > width-chrome.marginR {
+			if app.uiStyle == uiStyleCompact {
+				left = chrome.marginL
+				top += chrome.buttonH + 4
+			} else {
+				break
+			}
+		}
 		b := labels[i]
-		b.bounds = rect{left: left, top: top, right: left + w, bottom: top + 28}
+		b.bounds = rect{left: left, top: top, right: left + w, bottom: top + chrome.buttonH}
 		app.buttons = append(app.buttons, b)
-		fill(hdc, b.bounds, palette.panel)
+		fillPanel(hdc, b.bounds, palette, chrome)
 		line(hdc, b.bounds.left, b.bounds.bottom, b.bounds.right, b.bounds.bottom, palette.accent, 2)
 		procSetTextColor.Call(hdc, palette.text)
-		textOut(hdc, b.bounds.left+10, b.bounds.top+7, b.label)
-		left += w + 8
-		if left+80 > width-28 {
-			break
-		}
+		textOut(hdc, b.bounds.left+8, b.bounds.top+5, b.label)
+		left += w + chrome.buttonGap
 	}
 }
 
-func drawPlaylist(hdc uintptr, width, height int32) {
+func drawPlaylist(hdc uintptr, width, height int32, palette palette, chrome uiChromeLayout) {
 	list := app.filteredPlaylist()
 	groups := app.libraryGroupsForPanel()
 	entries := app.libraryEntriesForPanel()
@@ -1801,14 +1825,19 @@ func drawPlaylist(hdc uintptr, width, height int32) {
 	if count == 0 && app.panel == viewQueue {
 		return
 	}
-	palette := currentPalette()
-	left := width - 292
-	if left < width/2 {
+	if !chrome.showPlaylist && app.panel == viewQueue {
 		return
 	}
-	top := int32(128)
-	panel := rect{left: left, top: top, right: width - 28, bottom: height - 104}
-	fill(hdc, panel, dimColor(palette.panel, 0.75))
+	if !chrome.showPlaylist && count == 0 {
+		return
+	}
+	left := chrome.playlistLeft
+	if left < chrome.marginL {
+		return
+	}
+	top := chrome.playlistTop
+	panel := rect{left: left, top: top, right: left + chrome.playlistW, bottom: chrome.vizBottom}
+	fillPanel(hdc, panel, palette, chrome)
 	procSetTextColor.Call(hdc, palette.text)
 	textOut(hdc, left+12, top+10, fmt.Sprintf("%s (%d)", app.panelTitle(), count))
 	app.playlistRowBounds = app.playlistRowBounds[:0]
@@ -1816,7 +1845,7 @@ func drawPlaylist(hdc uintptr, width, height int32) {
 	if len(groups) > 0 && app.panelGroupKey == "" {
 		for row := 0; row < 8 && row < len(groups); row++ {
 			y := top + 38 + int32(row*24)
-			rowRect := rect{left: left + 8, top: y - 4, right: width - 36, bottom: y + 18}
+			rowRect := rect{left: left + 8, top: y - 4, right: left + chrome.playlistW - 12, bottom: y + 18}
 			app.playlistRowBounds = append(app.playlistRowBounds, rowRect)
 			textOut(hdc, left+12, y, truncate(groups[row], 34))
 		}
@@ -1826,7 +1855,7 @@ func drawPlaylist(hdc uintptr, width, height int32) {
 		for row := 0; row < 8 && row < len(entries); row++ {
 			e := entries[row]
 			y := top + 38 + int32(row*24)
-			rowRect := rect{left: left + 8, top: y - 4, right: width - 36, bottom: y + 18}
+			rowRect := rect{left: left + 8, top: y - 4, right: left + chrome.playlistW - 12, bottom: y + 18}
 			app.playlistRowBounds = append(app.playlistRowBounds, rowRect)
 			label := e.Title
 			if e.PlayCount > 0 {
@@ -1839,7 +1868,7 @@ func drawPlaylist(hdc uintptr, width, height int32) {
 	for row := 0; row < 8 && row < len(list); row++ {
 		t := list[row]
 		y := top + 38 + int32(row*24)
-		rowRect := rect{left: left + 8, top: y - 4, right: width - 36, bottom: y + 18}
+		rowRect := rect{left: left + 8, top: y - 4, right: left + chrome.playlistW - 12, bottom: y + 18}
 		app.playlistRowBounds = append(app.playlistRowBounds, rowRect)
 		fav := ""
 		if t.Favorite {
@@ -2058,7 +2087,7 @@ func (s *appState) loadSettings() {
 	s.autoPreset = cfg.AutoPreset
 	s.djMode = cfg.DJMode
 	s.panelGroup = cfg.PanelGroup
-	s.panelGroupKey = cfg.PanelGroupKey
+	s.uiStyle = uiStyle(cfg.UIStyle % int(uiStyleCount))
 	for _, fav := range cfg.Favorites {
 		s.favorites[filepath.Clean(fav)] = true
 	}
@@ -2106,6 +2135,7 @@ func (s *appState) saveSettings() {
 		AutoPreset:         s.autoPreset,
 		DJMode:             s.djMode,
 		VisualIntensity:    s.visualIntensity,
+		UIStyle:            int(s.uiStyle),
 		PanelGroup:         s.panelGroup,
 		PanelGroupKey:      s.panelGroupKey,
 	}
@@ -2305,13 +2335,12 @@ func (s *appState) seekFromPoint(x, y int32) bool {
 	return true
 }
 
+func volumeSliderRect(width, height int32) rect {
+	return volumeSliderRectFor(layoutFor(app.uiStyle, width, height), width)
+}
+
 func progressRect(width, height int32) rect {
-	return rect{
-		left:   28,
-		top:    height - 82,
-		right:  width - 28,
-		bottom: height - 68,
-	}
+	return layoutFor(app.uiStyle, width, height).progressBar(width)
 }
 
 func mousePoint(lParam uintptr) (int32, int32) {

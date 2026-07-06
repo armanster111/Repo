@@ -10,18 +10,22 @@ type settingsRow struct {
 	bounds rect
 }
 
-func (s *appState) drawSettingsPanel(hdc uintptr, width, height int32, palette palette) {
+func (s *appState) drawSettingsPanel(hdc uintptr, width, height int32, palette palette, chrome uiChromeLayout) {
 	if !s.showSettings {
 		s.settingsRows = nil
 		s.modePreviewBounds = nil
+		s.uiStylePreviewBounds = nil
 		return
 	}
-	left := int32(28)
-	top := int32(108)
-	right := width - 320
-	bottom := top + 310
+	left := chrome.marginL
+	top := chrome.vizTop - 4
+	right := width - chrome.marginR - 280
+	if right < left+280 {
+		right = width - chrome.marginR
+	}
+	bottom := top + 360
 	panel := rect{left: left, top: top, right: right, bottom: bottom}
-	fill(hdc, panel, dimColor(palette.panel, 0.92))
+	fillPanel(hdc, panel, palette, chrome)
 	procSetTextColor.Call(hdc, palette.text)
 	textOut(hdc, left+12, top+10, "Settings — click rows to toggle (3 to close)")
 	s.settingsRows = s.settingsRows[:0]
@@ -53,10 +57,9 @@ func (s *appState) drawSettingsPanel(hdc uintptr, width, height int32, palette p
 		textOut(hdc, left+16, y, row.label+": "+state)
 	}
 
-	// Visual intensity slider
 	sliderTop := top + 34 + int32(len(rows)*22) + 8
 	s.intensitySlider = rect{left: left + 12, top: sliderTop, right: right - 12, bottom: sliderTop + 14}
-	fill(hdc, s.intensitySlider, dimColor(palette.panel, 0.7))
+	fillPanel(hdc, s.intensitySlider, palette, chrome)
 	level := s.visualIntensity
 	if level < 0.1 {
 		level = 0.1
@@ -69,7 +72,6 @@ func (s *appState) drawSettingsPanel(hdc uintptr, width, height int32, palette p
 	procSetTextColor.Call(hdc, palette.dim)
 	textOut(hdc, left+12, sliderTop+18, "Visual intensity (drag): "+formatFloat(s.visualIntensity))
 
-	// Mode preview strip — shader modes + neighbors
 	previewTop := sliderTop + 40
 	procSetTextColor.Call(hdc, palette.dim)
 	textOut(hdc, left+12, previewTop, "Visualizer modes (click):")
@@ -85,15 +87,18 @@ func (s *appState) drawSettingsPanel(hdc uintptr, width, height int32, palette p
 		col := shaderPreviewColor(m)
 		if m == s.mode {
 			fill(hdc, r, col)
-			frame(hdc, r, palette.accent2, 2)
+			drawPanelBorder(hdc, r, palette.accent2, 2)
 		} else {
 			fill(hdc, r, dimColor(col, 0.55))
 		}
 	}
 
+	styleTop := previewTop + 56
+	s.drawUIStylePicker(hdc, left+12, styleTop, palette, chrome)
+
 	procSetTextColor.Call(hdc, palette.dim)
 	textOut(hdc, left+12, bottom-42, "Mood: "+s.mood+"  BPM: "+formatBPM(s.bpm)+"  Export: 2=GIF  *=Video")
-	textOut(hdc, left+12, bottom-22, "Overlay opacity: [ / ]   Double-click visualizer for cinema")
+	textOut(hdc, left+12, bottom-22, "F8 UI style | Overlay: [ / ] | Double-click viz = cinema")
 }
 
 func (s *appState) handleIntensitySlider(x, y int32) bool {
@@ -170,11 +175,4 @@ func (s *appState) toggleRemoteControl() {
 	}
 	s.saveSettings()
 	invalidate()
-}
-
-func frame(hdc uintptr, r rect, col uintptr, thickness int32) {
-	line(hdc, r.left, r.top, r.right, r.top, col, thickness)
-	line(hdc, r.left, r.bottom, r.right, r.bottom, col, thickness)
-	line(hdc, r.left, r.top, r.left, r.bottom, col, thickness)
-	line(hdc, r.right, r.top, r.right, r.bottom, col, thickness)
 }
