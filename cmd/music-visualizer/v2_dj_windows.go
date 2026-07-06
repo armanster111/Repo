@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func (s *appState) toggleDJMode() {
@@ -69,10 +70,21 @@ func (s *appState) mixDJBars(deckA []float64) []float64 {
 }
 
 func (s *appState) togglePartyMode() {
+	if s.partyMode {
+		s.partyMode = false
+		s.karaokeMode = false
+		s.visualIntensity = 1.0
+		s.status = "Party mode off."
+		s.saveSettings()
+		invalidate()
+		return
+	}
+	s.partyMode = true
 	s.visualIntensity = 1.45
 	s.karaokeMode = true
 	s.mode = modeKaleidoscope
-	s.status = "Party mode — kaleidoscope + karaoke + boosted visuals."
+	s.flashStatus("Party mode on — kaleidoscope + karaoke. Press 6 to turn off.", 3*time.Second)
+	s.saveSettings()
 	invalidate()
 }
 

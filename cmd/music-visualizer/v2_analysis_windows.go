@@ -22,13 +22,17 @@ func (s *appState) fetchLyricsAsync() {
 		title = s.filePath
 	}
 	s.lyricsFetching = true
-	go func() {
+		go func() {
 		lines, err := lyrics.FetchOnline(artist, title)
 		s.lyricsFetching = false
 		if err != nil || len(lines) == 0 {
+			if err != nil {
+				s.flashStatus("Lyrics: "+err.Error(), 4*time.Second)
+			}
 			return
 		}
 		s.lyricLines = lines
+		s.flashStatus("Synced lyrics loaded.", 2*time.Second)
 		invalidate()
 	}()
 }

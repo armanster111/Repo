@@ -52,10 +52,15 @@ func overlayWndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr
 			return htCaption
 		}
 		return ret
+	case wmMove, wmSize:
+		app.saveOverlayBounds()
+		return 0
 	case wmPaint:
 		drawOverlay(hwnd)
 		return 0
 	case wmDestroy:
+		app.overlayHWND = 0
+		app.saveOverlayBounds()
 		return 0
 	default:
 		ret, _, _ := procDefWindowProcW.Call(hwnd, uintptr(message), wParam, lParam)
@@ -69,12 +74,14 @@ func (s *appState) toggleOverlay() {
 		return
 	}
 	s.openOverlay()
+	s.saveSettings()
 }
 
 func (s *appState) openOverlay() {
 	if s.overlayHWND != 0 {
 		s.overlayMode = true
 		procShowWindow.Call(s.overlayHWND, swShowDefault)
+		s.saveSettings()
 		return
 	}
 	instance, _, _ := procGetModuleHandleW.Call(0)
@@ -88,12 +95,17 @@ func (s *appState) openOverlay() {
 	}
 	procRegisterClassExW.Call(uintptr(unsafe.Pointer(&wc)))
 
+	x, y, w, h := int32(100), int32(100), int32(900), int32(500)
+	if s.overlayW >= 300 && s.overlayH >= 200 {
+		x, y, w, h = s.overlayX, s.overlayY, s.overlayW, s.overlayH
+	}
+
 	hwnd, _, _ := procCreateWindowExW.Call(
 		wsExLayered|wsExTopmost|wsExToolwindow,
 		uintptr(unsafe.Pointer(className)),
 		uintptr(unsafe.Pointer(title)),
 		wsPopup|wsCaption|wsSysMenu|wsMinimizeBox,
-		100, 100, 900, 500,
+		uintptr(x), uintptr(y), uintptr(w), uintptr(h),
 		0, 0, instance, 0,
 	)
 	if hwnd == 0 {
@@ -101,21 +113,28 @@ func (s *appState) openOverlay() {
 		invalidate()
 		return
 	}
-	procSetLayeredWindowAttributes.Call(hwnd, 0, 220, lwaAlpha)
+	alpha := s.overlayAlpha
+	if alpha < 80 {
+		alpha = 220
+	}
+	procSetLayeredWindowAttributes.Call(hwnd, 0, uintptr(alpha), lwaAlpha)
 	procSetTimer.Call(hwnd, timerID+1, 1000/fps, 0)
 	s.overlayHWND = hwnd
 	s.overlayMode = true
 	procShowWindow.Call(hwnd, swShowDefault)
-	s.status = "OBS overlay on — drag title bar to move. Esc or 1 to close."
+	s.status = "OBS overlay — drag to move, [ ] opacity, Esc to close."
+	s.saveSettings()
 	invalidate()
 }
 
 func (s *appState) closeOverlay() {
 	if s.overlayHWND != 0 {
+		s.saveOverlayBounds()
 		procDestroyWindow.Call(s.overlayHWND)
 		s.overlayHWND = 0
 	}
 	s.overlayMode = false
+	s.saveSettings()
 	s.updateStatus()
 	invalidate()
 }
@@ -146,8 +165,14 @@ func drawOverlay(hwnd uintptr) {
 
 func drawVisualizerOnly(hdc uintptr, width, height int32) {
 	fill(hdc, rect{0, 0, width, height}, rgb(0, 0, 0))
-	bars := app.rawBars()
-	bars = app.applyVisualEQ(bars)
+	bars := app.targetBars()
+	if app.ultra != nil {
+		beat := app.beatMultiplier(bars)
+		bars = app.ultra.processBars(bars, app.visualIntensity, beat)
+		app.currentBars = bars
+		drawWithEffects(hdc, rect{left: 8, top: 8, right: width - 8, bottom: height - 8}, bars, app.ultra.peakBars(), app.ultra.trailFrames(), app.mode)
+		return
+	}
 	beat := app.beatMultiplier(bars)
 	for i := range bars {
 		bars[i] = math.Min(1, bars[i]*beat*app.visualIntensity)
@@ -158,7 +183,7 @@ func drawVisualizerOnly(hdc uintptr, width, height int32) {
 	for i, target := range bars {
 		app.currentBars[i] += (target - app.currentBars[i]) * 0.35
 	}
-	bounds := rect{left: 20, top: 20, right: width - 20, bottom: height - 20}
+	bounds := rect{left: 8, top: 8, right: width - 8, bottom: height - 8}
 	drawVisualization(hdc, bounds, app.currentBars, app.mode)
 }
 
@@ -191,7 +216,7 @@ func (s *appState) finishGifRecord() {
 	path := filepath.Join(dir, name+".txt")
 	body := fmt.Sprintf("Captured %d visualizer frames at %d FPS.\nUse OBS or the overlay window for live streaming.\n", s.gifFrameCount, fps)
 	_ = os.WriteFile(path, []byte(body), 0644)
-	s.status = "Saved streamer note: " + path
+	s.status = "Stream tip saved to Desktop (use OBS overlay for capture)."
 	invalidate()
 }
 

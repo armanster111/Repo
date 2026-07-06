@@ -45,7 +45,10 @@ const (
 	wmMouseMove   = 0x0200
 	wmLButtonDown = 0x0201
 	wmLButtonUp   = 0x0202
-	wmDropFiles   = 0x0233
+	wmLButtonDblClk = 0x0203
+	wmMove          = 0x0003
+	wmSize          = 0x0005
+	wmDropFiles     = 0x0233
 	wmNCHitTest   = 0x0084
 	wmApp         = 0x8000
 	wmMciNotify   = wmApp + 1
@@ -218,6 +221,11 @@ type settings struct {
 	KaraokeMode        bool          `json:"karaoke_mode"`
 	AmbientMode        bool          `json:"ambient_mode"`
 	OverlayMode        bool          `json:"overlay_mode"`
+	OverlayX           int32         `json:"overlay_x"`
+	OverlayY           int32         `json:"overlay_y"`
+	OverlayW           int32         `json:"overlay_w"`
+	OverlayH           int32         `json:"overlay_h"`
+	OverlayAlpha       int           `json:"overlay_alpha"`
 	RemoteControl      bool          `json:"remote_control"`
 	AutoPreset         bool          `json:"auto_preset"`
 	DJMode             bool          `json:"dj_mode"`
@@ -339,6 +347,17 @@ type appState struct {
 	gifFrameCount      int
 	lyricsFetching     bool
 	ultra              *ultraEngine
+	lastMouseMove      time.Time
+	cinemaHideUI       bool
+	overlayAlpha       byte
+	overlayX           int32
+	overlayY           int32
+	overlayW           int32
+	overlayH           int32
+	statusFlash        string
+	statusFlashUntil   time.Time
+	settingsRows       []settingsRow
+	partyMode          bool
 }
 
 var app = &appState{
@@ -354,6 +373,9 @@ var app = &appState{
 	lastPlayed:         map[string]int64{},
 	djCrossfader:       0.5,
 	crossfadeLevel:     1.0,
+	overlayAlpha:       220,
+	lastMouseMove:      time.Now(),
+	remoteEnabled:      true,
 	desktop:            newDesktopInput(),
 	ultra:              newUltraEngine(),
 }
@@ -485,6 +507,7 @@ func run() error {
 	if app.desktopMode {
 		_ = app.desktop.start()
 	}
+	app.restoreOverlayIfNeeded()
 
 	procShowWindow.Call(hwnd, swShowDefault)
 	procUpdateWindow.Call(hwnd)
@@ -521,6 +544,8 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		if app.ultra != nil {
 			app.ultra.tickShowcase()
 		}
+		app.tickCinemaUI()
+		app.tickStatusFlash()
 		if app.modeBlend < 1 {
 			app.modeBlend += 0.1
 		}
@@ -624,7 +649,15 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		case uintptr('/'):
 			app.showSearchView()
 		case uintptr(']'):
-			app.cycleDesktopSensitivity()
+			if app.overlayMode {
+				app.cycleOverlayOpacity(15)
+			} else {
+				app.cycleDesktopSensitivity()
+			}
+		case uintptr('['):
+			if app.overlayMode {
+				app.cycleOverlayOpacity(-15)
+			}
 		case uintptr('1'):
 			app.toggleOverlay()
 		case uintptr('2'):
@@ -681,6 +714,10 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		return 0
 	case wmLButtonDown:
 		x, y := mousePoint(lParam)
+		app.noteMouseActivity()
+		if app.handleSettingsClick(x, y) {
+			return 0
+		}
 		if app.handleVolumeSlider(x, y) {
 			return 0
 		}
@@ -696,6 +733,7 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		}
 		return 0
 	case wmMouseMove:
+		app.noteMouseActivity()
 		if app.dragging && wParam&mkLButton != 0 {
 			x, y := mousePoint(lParam)
 			app.seekFromPoint(x, y)
@@ -709,10 +747,21 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 			procReleaseCapture.Call()
 		}
 		return 0
+	case wmLButtonDblClk:
+		x, y := mousePoint(lParam)
+		var bounds rect
+		procGetClientRect.Call(hwnd, uintptr(unsafe.Pointer(&bounds)))
+		width := bounds.right - bounds.left
+		height := bounds.bottom - bounds.top
+		if app.handleVisualizerDoubleClick(x, y, width, height) {
+			return 0
+		}
+		return 0
 	case wmPaint:
 		draw(hwnd)
 		return 0
 	case wmDestroy:
+		app.saveOverlayBounds()
 		app.saveWindowBounds()
 		app.removeTray()
 		app.stopDesktopInput()
@@ -860,7 +909,7 @@ func (s *appState) nextTrack() {
 		return
 	}
 	if s.shuffle && len(s.playlist) > 1 {
-		s.currentIndex = (s.currentIndex + 3) % len(s.playlist)
+		s.currentIndex = s.pickShuffleIndex()
 	} else {
 		s.currentIndex++
 		if s.currentIndex >= len(s.playlist) {
@@ -1095,7 +1144,7 @@ func (s *appState) cycleMode() {
 	s.prevMode = s.mode
 	s.modeBlend = 0
 	s.mode = (s.mode + 1) % modeCount
-	s.updateStatus()
+	s.flashStatus("Visualizer: "+modeName(s.mode), 2*time.Second)
 	s.saveSettings()
 	invalidate()
 }
@@ -1308,7 +1357,10 @@ func drawFrame(hdc uintptr, width, height int32) {
 	procSetBkMode.Call(hdc, transparent)
 	procSetTextColor.Call(hdc, palette.text)
 	textOut(hdc, 28, 24, appTitle+" Ultra")
-	if !app.mini && !app.visualOnly {
+	if app.ultra != nil && app.ultra.showcase && !app.cinemaUIVisible() {
+		procSetTextColor.Call(hdc, palette.dim)
+		textOut(hdc, 28, height-36, "Cinema mode — move mouse for controls, Esc to exit, F9 toggle")
+	} else if !app.mini && !app.visualOnly {
 		procSetTextColor.Call(hdc, palette.dim)
 		hasMeta := app.meta.Title != ""
 		if hasMeta {
@@ -1959,11 +2011,23 @@ func (s *appState) loadSettings() {
 	s.karaokeMode = cfg.KaraokeMode
 	s.ambientMode = cfg.AmbientMode
 	s.overlayMode = cfg.OverlayMode
+	s.overlayX = cfg.OverlayX
+	s.overlayY = cfg.OverlayY
+	s.overlayW = cfg.OverlayW
+	s.overlayH = cfg.OverlayH
+	if cfg.OverlayAlpha >= 80 && cfg.OverlayAlpha <= 255 {
+		s.overlayAlpha = byte(cfg.OverlayAlpha)
+	}
+	if cfg.RemoteControl {
+		s.remoteEnabled = true
+		s.startRemoteControl()
+	} else {
+		s.remoteEnabled = false
+	}
 	s.autoPreset = cfg.AutoPreset
 	s.djMode = cfg.DJMode
-	if cfg.RemoteControl {
-		s.startRemoteControl()
-	}
+	s.panelGroup = cfg.PanelGroup
+	s.panelGroupKey = cfg.PanelGroupKey
 	for _, fav := range cfg.Favorites {
 		s.favorites[filepath.Clean(fav)] = true
 	}
@@ -2002,10 +2066,17 @@ func (s *appState) saveSettings() {
 		KaraokeMode:        s.karaokeMode,
 		AmbientMode:        s.ambientMode,
 		OverlayMode:        s.overlayMode,
+		OverlayX:           s.overlayX,
+		OverlayY:           s.overlayY,
+		OverlayW:           s.overlayW,
+		OverlayH:           s.overlayH,
+		OverlayAlpha:       int(s.overlayAlpha),
 		RemoteControl:      s.remoteEnabled,
 		AutoPreset:         s.autoPreset,
 		DJMode:             s.djMode,
 		VisualIntensity:    s.visualIntensity,
+		PanelGroup:         s.panelGroup,
+		PanelGroupKey:      s.panelGroupKey,
 	}
 	for fav, ok := range s.favorites {
 		if ok {

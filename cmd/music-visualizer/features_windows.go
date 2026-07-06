@@ -91,10 +91,18 @@ func (s *appState) showFavoritesView() { s.panel = viewFavorites; invalidate() }
 func (s *appState) showSearchView() { s.panel = viewSearch; invalidate() }
 
 func (s *appState) toggleVisualOnly() {
-	s.visualOnly = !s.visualOnly
 	if s.visualOnly {
+		s.visualOnly = false
+		if s.ultra != nil && s.ultra.showcase {
+			s.ultra.exitShowcase()
+			return
+		}
+		procShowWindow.Call(s.hwnd, swShowNormal)
+	} else {
+		s.visualOnly = true
 		procShowWindow.Call(s.hwnd, swShowMaximized)
 	}
+	s.updateStatus()
 	invalidate()
 }
 

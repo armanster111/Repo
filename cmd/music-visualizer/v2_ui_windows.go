@@ -76,35 +76,6 @@ func (s *appState) toggleSettingsPanel() {
 	invalidate()
 }
 
-func (s *appState) drawSettingsPanel(hdc uintptr, width, height int32, palette palette) {
-	if !s.showSettings {
-		return
-	}
-	left := int32(28)
-	top := int32(108)
-	right := width - 320
-	bottom := top + 220
-	fill(hdc, rect{left: left, top: top, right: right, bottom: bottom}, dimColor(palette.panel, 0.92))
-	procSetTextColor.Call(hdc, palette.text)
-	lines := []string{
-		"Settings (press 3 to close)",
-		"Crossfade: " + boolText(s.crossfade) + "  |  Karaoke: " + boolText(s.karaokeMode),
-		"Ambient: " + boolText(s.ambientMode) + "  |  Overlay: " + boolText(s.overlayMode),
-		"DJ: " + boolText(s.djMode) + "  |  Auto preset: " + boolText(s.autoPreset),
-		"Remote: http://localhost:8765  |  Enabled: " + boolText(s.remoteEnabled),
-		"Mood: " + s.mood + "  |  BPM: " + formatBPM(s.bpm),
-		"Visual intensity: " + formatFloat(s.visualIntensity),
-		"4=export sync  5=import presets  6=party  7=library scan",
-	}
-	for i, line := range lines {
-		procSetTextColor.Call(hdc, palette.dim)
-		if i == 0 {
-			procSetTextColor.Call(hdc, palette.text)
-		}
-		textOut(hdc, left+12, top+12+int32(i*22), line)
-	}
-}
-
 func boolText(v bool) string {
 	if v {
 		return "On"

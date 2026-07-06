@@ -15,7 +15,7 @@ func (s *appState) initV2Features() {
 	s.installDefaultPack()
 	s.loadPresetsFromDisk()
 	s.loadPluginPacks()
-	if !s.remoteEnabled {
+	if s.remoteEnabled {
 		s.startRemoteControl()
 	}
 	s.scanLibraryAsync()
