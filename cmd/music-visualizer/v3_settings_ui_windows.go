@@ -13,16 +13,17 @@ type settingsRow struct {
 func (s *appState) drawSettingsPanel(hdc uintptr, width, height int32, palette palette) {
 	if !s.showSettings {
 		s.settingsRows = nil
+		s.modePreviewBounds = nil
 		return
 	}
 	left := int32(28)
 	top := int32(108)
 	right := width - 320
-	bottom := top + 250
+	bottom := top + 310
 	panel := rect{left: left, top: top, right: right, bottom: bottom}
 	fill(hdc, panel, dimColor(palette.panel, 0.92))
 	procSetTextColor.Call(hdc, palette.text)
-	textOut(hdc, left+12, top+10, "Settings — click a row to toggle (3 to close)")
+	textOut(hdc, left+12, top+10, "Settings — click rows to toggle (3 to close)")
 	s.settingsRows = s.settingsRows[:0]
 	rows := []struct {
 		label  string
@@ -39,8 +40,8 @@ func (s *appState) drawSettingsPanel(hdc uintptr, width, height int32, palette p
 		{"Party mode", "party", s.partyMode},
 	}
 	for i, row := range rows {
-		y := top + 34 + int32(i*24)
-		r := rect{left: left + 8, top: y - 2, right: right - 8, bottom: y + 18}
+		y := top + 34 + int32(i*22)
+		r := rect{left: left + 8, top: y - 2, right: right - 8, bottom: y + 16}
 		s.settingsRows = append(s.settingsRows, settingsRow{label: row.label, action: row.action, bounds: r})
 		state := "Off"
 		color := palette.dim
@@ -51,9 +52,79 @@ func (s *appState) drawSettingsPanel(hdc uintptr, width, height int32, palette p
 		procSetTextColor.Call(hdc, color)
 		textOut(hdc, left+16, y, row.label+": "+state)
 	}
+
+	// Visual intensity slider
+	sliderTop := top + 34 + int32(len(rows)*22) + 8
+	s.intensitySlider = rect{left: left + 12, top: sliderTop, right: right - 12, bottom: sliderTop + 14}
+	fill(hdc, s.intensitySlider, dimColor(palette.panel, 0.7))
+	level := s.visualIntensity
+	if level < 0.1 {
+		level = 0.1
+	}
+	if level > 2 {
+		level = 2
+	}
+	knob := s.intensitySlider.left + int32((level-0.1)/1.9*float64(s.intensitySlider.right-s.intensitySlider.left))
+	fill(hdc, rect{left: s.intensitySlider.left, top: s.intensitySlider.top, right: knob, bottom: s.intensitySlider.bottom}, palette.accent)
 	procSetTextColor.Call(hdc, palette.dim)
-	textOut(hdc, left+12, bottom-42, "Mood: "+s.mood+"  BPM: "+formatBPM(s.bpm)+"  Intensity: "+formatFloat(s.visualIntensity))
+	textOut(hdc, left+12, sliderTop+18, "Visual intensity (drag): "+formatFloat(s.visualIntensity))
+
+	// Mode preview strip — shader modes + neighbors
+	previewTop := sliderTop + 40
+	procSetTextColor.Call(hdc, palette.dim)
+	textOut(hdc, left+12, previewTop, "Visualizer modes (click):")
+	s.modePreviewBounds = s.modePreviewBounds[:0]
+	previewModes := []visualMode{modeClassic, modeAurora, modeNeonCity, modeFluid, modeGalaxy, modeChromatic, modeSupernova, modeLiquid}
+	box := int32(28)
+	gap := int32(6)
+	for i, m := range previewModes {
+		x := left + 12 + int32(i)*(box+gap)
+		y := previewTop + 18
+		r := rect{left: x, top: y, right: x + box, bottom: y + box}
+		s.modePreviewBounds = append(s.modePreviewBounds, r)
+		col := shaderPreviewColor(m)
+		if m == s.mode {
+			fill(hdc, r, col)
+			frame(hdc, r, palette.accent2, 2)
+		} else {
+			fill(hdc, r, dimColor(col, 0.55))
+		}
+	}
+
+	procSetTextColor.Call(hdc, palette.dim)
+	textOut(hdc, left+12, bottom-42, "Mood: "+s.mood+"  BPM: "+formatBPM(s.bpm)+"  Export: 2=GIF  *=MP4")
 	textOut(hdc, left+12, bottom-22, "Overlay opacity: [ / ]   Double-click visualizer for cinema")
+}
+
+func (s *appState) handleIntensitySlider(x, y int32) bool {
+	if !s.showSettings || !pointInRect(x, y, s.intensitySlider) {
+		return false
+	}
+	frac := float64(x-s.intensitySlider.left) / float64(s.intensitySlider.right-s.intensitySlider.left)
+	s.visualIntensity = clamp(0.1+frac*1.9, 0.1, 2.0)
+	s.saveSettings()
+	invalidate()
+	return true
+}
+
+func (s *appState) handleModePreviewClick(x, y int32) bool {
+	if !s.showSettings {
+		return false
+	}
+	previewModes := []visualMode{modeClassic, modeAurora, modeNeonCity, modeFluid, modeGalaxy, modeChromatic, modeSupernova, modeLiquid}
+	for i, r := range s.modePreviewBounds {
+		if !pointInRect(x, y, r) {
+			continue
+		}
+		if i < len(previewModes) {
+			s.mode = previewModes[i]
+			s.flashStatus("Visualizer: "+modeName(s.mode), 2*time.Second)
+			s.saveSettings()
+			invalidate()
+		}
+		return true
+	}
+	return false
 }
 
 func (s *appState) handleSettingsClick(x, y int32) bool {
@@ -99,4 +170,11 @@ func (s *appState) toggleRemoteControl() {
 	}
 	s.saveSettings()
 	invalidate()
+}
+
+func frame(hdc uintptr, r rect, col uintptr, thickness int32) {
+	line(hdc, r.left, r.top, r.right, r.top, col, thickness)
+	line(hdc, r.left, r.bottom, r.right, r.bottom, col, thickness)
+	line(hdc, r.left, r.top, r.left, r.bottom, col, thickness)
+	line(hdc, r.right, r.top, r.right, r.bottom, col, thickness)
 }

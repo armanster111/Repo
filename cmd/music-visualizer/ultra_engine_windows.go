@@ -134,6 +134,10 @@ func (e *ultraEngine) syncArtTint(grid *metadata.ArtGrid) {
 }
 
 func drawWithEffects(hdc uintptr, bounds rect, bars []float64, peaks []float64, trails [][]float64, mode visualMode) {
+	if isShaderMode(mode) {
+		drawShaderMode(hdc, bounds, bars, mode)
+		return
+	}
 	palette := currentPalette()
 	for i, trail := range trails {
 		if i == 0 {

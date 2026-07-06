@@ -75,6 +75,22 @@ func (s *appState) buildFramesForPath(path string) ([]visual.Frame, time.Duratio
 		frames := visual.BuildFramesFFT(mono, sampleRate, fps, barCount)
 		duration := time.Duration(float64(len(mono)) / float64(sampleRate) * float64(time.Second))
 		return frames, duration
+	case ".flac":
+		mono, sampleRate, err := audio.DecodeFileFLAC(path)
+		if err != nil || len(mono) == 0 {
+			return nil, 0
+		}
+		frames := visual.BuildFramesFFT(mono, sampleRate, fps, barCount)
+		duration := time.Duration(float64(len(mono)) / float64(sampleRate) * float64(time.Second))
+		return frames, duration
+	case ".ogg", ".oga":
+		mono, sampleRate, err := audio.DecodeFileOGG(path)
+		if err != nil || len(mono) == 0 {
+			return nil, 0
+		}
+		frames := visual.BuildFramesFFT(mono, sampleRate, fps, barCount)
+		duration := time.Duration(float64(len(mono)) / float64(sampleRate) * float64(time.Second))
+		return frames, duration
 	default:
 		return nil, 0
 	}

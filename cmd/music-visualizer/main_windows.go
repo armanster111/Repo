@@ -121,6 +121,7 @@ var (
 	procUpdateWindow        = user32.NewProc("UpdateWindow")
 
 	procBitBlt               = gdi32.NewProc("BitBlt")
+	procSetDIBitsToDevice    = gdi32.NewProc("SetDIBitsToDevice")
 	procCreateCompatibleBitmap = gdi32.NewProc("CreateCompatibleBitmap")
 	procCreateCompatibleDC   = gdi32.NewProc("CreateCompatibleDC")
 	procCreatePen        = gdi32.NewProc("CreatePen")
@@ -166,6 +167,9 @@ const (
 	modeLiquid
 	modeOrbit
 	modeWaveform3D
+	modeFluid
+	modeGalaxy
+	modeChromatic
 	modeCount
 )
 
@@ -358,10 +362,20 @@ type appState struct {
 	statusFlashUntil   time.Time
 	settingsRows       []settingsRow
 	partyMode          bool
+	shader             *shaderEngine
+	gifFrames          []*visual.Canvas
+	mp4Recording       bool
+	mp4FrameDir        string
+	mp4FrameCount      int
+	preloadPath        string
+	preloadFrames      []visual.Frame
+	preloadBusy        bool
+	intensitySlider    rect
+	modePreviewBounds  []rect
 }
 
 var app = &appState{
-	status:             "Open or drag audio here. MP3/WAV playback, playlists, themes, and visualizers are ready.",
+	status:             "Open or drag audio here. MP3/WAV/FLAC/OGG playback, playlists, themes, and 22 visualizers are ready.",
 	currentIndex:       -1,
 	theme:              themeNeon,
 	volume:             800,
@@ -540,7 +554,9 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		app.maybeAutoDesktop()
 		app.tickCrossfade()
 		app.applyCrossfadeVolume()
+		app.tickGaplessPreload()
 		app.captureGifFrame()
+		app.captureMp4Frame()
 		if app.ultra != nil {
 			app.ultra.tickShowcase()
 		}
@@ -662,6 +678,8 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 			app.toggleOverlay()
 		case uintptr('2'):
 			app.toggleGifRecord()
+		case uintptr('*'):
+			app.toggleMp4Record()
 		case uintptr('3'):
 			app.toggleSettingsPanel()
 		case uintptr('4'):
@@ -716,6 +734,12 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		x, y := mousePoint(lParam)
 		app.noteMouseActivity()
 		if app.handleSettingsClick(x, y) {
+			return 0
+		}
+		if app.handleIntensitySlider(x, y) {
+			return 0
+		}
+		if app.handleModePreviewClick(x, y) {
 			return 0
 		}
 		if app.handleVolumeSlider(x, y) {
@@ -849,7 +873,9 @@ func (s *appState) loadCurrentTrack(play bool) {
 	s.currentBars = nil
 	s.ambientSeed = float64(hashPath(path)%1000) / 100
 	s.loadTrackMedia(path)
-	if frames, dur := s.buildFramesForPath(path); len(frames) > 0 {
+	if frames := s.takePreloadedFrames(path); len(frames) > 0 {
+		s.frames = frames
+	} else if frames, dur := s.buildFramesForPath(path); len(frames) > 0 {
 		s.frames = frames
 		if dur > 0 {
 			duration = dur
@@ -1294,7 +1320,7 @@ func (s *appState) ambientBars() []float64 {
 
 func openWAVDialog(hwnd uintptr) (string, bool) {
 	var fileBuffer [4096]uint16
-	filter := utf16WithNULs("Audio files\x00*.wav;*.mp3;*.wma;*.mid;*.midi;*.aiff;*.aif;*.au;*.snd\x00WAV files (*.wav)\x00*.wav\x00MP3 files (*.mp3)\x00*.mp3\x00All files (*.*)\x00*.*\x00\x00")
+	filter := utf16WithNULs("Audio files\x00*.wav;*.mp3;*.flac;*.ogg;*.oga;*.wma;*.mid;*.midi;*.aiff;*.aif;*.au;*.snd\x00WAV files (*.wav)\x00*.wav\x00MP3 files (*.mp3)\x00*.mp3\x00FLAC files (*.flac)\x00*.flac\x00OGG files (*.ogg)\x00*.ogg\x00All files (*.*)\x00*.*\x00\x00")
 	title, _ := syscall.UTF16PtrFromString("Open an audio file")
 
 	ofn := openFileName{
@@ -1438,6 +1464,11 @@ func drawFrame(hdc uintptr, width, height int32) {
 }
 
 func drawVisualization(hdc uintptr, bounds rect, bars []float64, mode visualMode) {
+	if isShaderMode(mode) {
+		if drawShaderMode(hdc, bounds, bars, mode) {
+			return
+		}
+	}
 	switch mode {
 	case modeMirror:
 		drawMirrorBars(hdc, bounds, bars)
@@ -1936,7 +1967,7 @@ func indexOfPath(tracks []track, path string) int {
 
 func isAudioFile(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
-	case ".wav", ".mp3", ".wma", ".mid", ".midi", ".aiff", ".aif", ".au", ".snd":
+	case ".wav", ".mp3", ".flac", ".ogg", ".oga", ".wma", ".mid", ".midi", ".aiff", ".aif", ".au", ".snd":
 		return true
 	default:
 		return false
@@ -2377,6 +2408,12 @@ func modeName(mode visualMode) string {
 		return "Orbit"
 	case modeWaveform3D:
 		return "Waveform 3D"
+	case modeFluid:
+		return "Fluid"
+	case modeGalaxy:
+		return "Galaxy"
+	case modeChromatic:
+		return "Chromatic"
 	default:
 		return "Classic"
 	}

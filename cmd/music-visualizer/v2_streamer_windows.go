@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/armanster111/music-visualizer/internal/visual"
 )
 
 const (
@@ -194,30 +196,52 @@ func (s *appState) toggleGifRecord() {
 	}
 	s.gifRecording = true
 	s.gifFrameCount = 0
-	s.status = "Recording GIF frames... press 2 to stop."
-	invalidate()
+	s.gifFrames = s.gifFrames[:0]
+	s.flashStatus("Recording GIF... press 2 to stop (max 120 frames).", 3*time.Second)
 }
 
 func (s *appState) captureGifFrame() {
 	if !s.gifRecording {
 		return
 	}
+	frame := s.renderExportFrame(480, 270)
+	if frame == nil {
+		return
+	}
+	dup := visual.NewCanvas(frame.W, frame.H)
+	copy(dup.Pix, frame.Pix)
+	s.gifFrames = append(s.gifFrames, dup)
 	s.gifFrameCount++
-	if s.gifFrameCount >= 90 {
+	if s.gifFrameCount >= 120 {
 		s.finishGifRecord()
 	}
 }
 
 func (s *appState) finishGifRecord() {
+	if !s.gifRecording {
+		return
+	}
 	s.gifRecording = false
+	count := len(s.gifFrames)
+	frames := s.gifFrames
+	s.gifFrames = nil
+	s.gifFrameCount = 0
+	if count == 0 {
+		s.flashStatus("GIF recording cancelled.", 2*time.Second)
+		return
+	}
 	home, _ := os.UserHomeDir()
 	dir := filepath.Join(home, "Desktop")
-	name := fmt.Sprintf("music-visualizer-frames-%s", time.Now().Format("20060102-150405"))
-	path := filepath.Join(dir, name+".txt")
-	body := fmt.Sprintf("Captured %d visualizer frames at %d FPS.\nUse OBS or the overlay window for live streaming.\n", s.gifFrameCount, fps)
-	_ = os.WriteFile(path, []byte(body), 0644)
-	s.status = "Stream tip saved to Desktop (use OBS overlay for capture)."
-	invalidate()
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		dir = home
+	}
+	path := filepath.Join(dir, fmt.Sprintf("music-visualizer-%s.gif", time.Now().Format("20060102-150405")))
+	delay := time.Second / time.Duration(fps)
+	if err := visual.EncodeGIF(path, frames, delay); err != nil {
+		s.flashStatus("GIF export failed: "+err.Error(), 3*time.Second)
+		return
+	}
+	s.flashStatus(fmt.Sprintf("Saved GIF (%d frames): %s", count, path), 4*time.Second)
 }
 
 func (s *appState) toggleAmbient() {
