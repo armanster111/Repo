@@ -97,7 +97,7 @@ func (s *appState) drawSettingsPanel(hdc uintptr, width, height int32, palette p
 	s.drawUIStylePicker(hdc, left+12, styleTop, palette, chrome)
 
 	procSetTextColor.Call(hdc, palette.dim)
-	textOut(hdc, left+12, bottom-42, "Mood: "+s.mood+"  BPM: "+formatBPM(s.bpm)+"  Export: 2=GIF  *=Video")
+	textOut(hdc, left+12, bottom-42, "Mood: "+s.mood+"  BPM: "+formatBPM(s.bpm)+"  Export: C=PNG 2=GIF *=AVI")
 	textOut(hdc, left+12, bottom-22, "F8 UI style | Overlay: [ / ] | Double-click viz = cinema")
 }
 

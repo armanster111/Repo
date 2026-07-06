@@ -66,6 +66,10 @@ const (
 	vkF11            = 0x7a
 	vkF8             = 0x77
 	vkF9             = 0x78
+	vkF1             = 0x70
+	vkPrior          = 0x21
+	vkNext           = 0x22
+	wmMouseWheel     = 0x020A
 	vkMediaNext      = 0xb0
 	vkMediaPrev      = 0xb1
 	vkMediaStop      = 0xb2
@@ -367,6 +371,12 @@ type appState struct {
 	statusFlashUntil   time.Time
 	settingsRows       []settingsRow
 	partyMode          bool
+	showHelp           bool
+	sliderDrag         string
+	framesLoading      bool
+	framesLoadingPath  string
+	partyPrevMode      visualMode
+	partyPrevIntensity float64
 	shader             *shaderEngine
 	gifFrames          []*visual.Canvas
 	mp4Recording       bool
@@ -597,6 +607,12 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 			app.togglePlay()
 		case vkF11:
 			app.toggleFullscreen()
+		case vkF1:
+			app.toggleHelp()
+		case vkPrior:
+			app.scrollPlaylist(-panelPageSize)
+		case vkNext:
+			app.scrollPlaylist(panelPageSize)
 		case vkF8:
 			app.cycleUIStyle()
 		case vkF9:
@@ -616,7 +632,7 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		case uintptr('B'):
 			app.previousTrack()
 		case uintptr('C'):
-			app.exportSnapshot()
+			app.exportSnapshotPNG()
 		case uintptr('D'):
 			app.loadCurrentFolder()
 		case uintptr('E'):
@@ -717,6 +733,8 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 			app.toggleAmbient()
 		case uintptr('~'):
 			app.toggleDJMode()
+		case uintptr('?'):
+			app.toggleHelp()
 		case uintptr('0'):
 			app.toggleAutoPreset()
 		}
@@ -737,6 +755,12 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 	case wmDropFiles:
 		app.handleDrop(wParam)
 		return 0
+	case wmMouseWheel:
+		delta := int16((wParam >> 16) & 0xffff)
+		if delta != 0 {
+			app.scrollPlaylist(int(-delta / 120))
+		}
+		return 0
 	case wmLButtonDown:
 		x, y := mousePoint(lParam)
 		app.noteMouseActivity()
@@ -746,13 +770,10 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		if app.handleUIStyleClick(x, y) {
 			return 0
 		}
-		if app.handleIntensitySlider(x, y) {
-			return 0
-		}
 		if app.handleModePreviewClick(x, y) {
 			return 0
 		}
-		if app.handleVolumeSlider(x, y) {
+		if app.beginSliderDrag(x, y) {
 			return 0
 		}
 		if app.handlePlaylistClick(x, y) {
@@ -768,12 +789,18 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		return 0
 	case wmMouseMove:
 		app.noteMouseActivity()
+		if app.sliderDrag != "" {
+			x, y := mousePoint(lParam)
+			app.handleSliderDrag(x, y)
+			return 0
+		}
 		if app.dragging && wParam&mkLButton != 0 {
 			x, y := mousePoint(lParam)
 			app.seekFromPoint(x, y)
 		}
 		return 0
 	case wmLButtonUp:
+		app.endSliderDrag()
 		if app.dragging {
 			x, y := mousePoint(lParam)
 			app.seekFromPoint(x, y)
@@ -885,11 +912,13 @@ func (s *appState) loadCurrentTrack(play bool) {
 	s.loadTrackMedia(path)
 	if frames := s.takePreloadedFrames(path); len(frames) > 0 {
 		s.frames = frames
-	} else if frames, dur := s.buildFramesForPath(path); len(frames) > 0 {
-		s.frames = frames
-		if dur > 0 {
-			duration = dur
+	} else if hasFFTForPath(path) {
+		s.loadFramesAsync(path)
+		if play {
+			s.flashStatus("Analyzing audio spectrum…", 2*time.Second)
 		}
+	} else if isAudioFile(path) {
+		s.flashStatus("Playing — ambient visuals (FFT not available for this format).", 3*time.Second)
 	}
 
 	s.filePath = path
@@ -1258,6 +1287,9 @@ func (s *appState) updateStatus() {
 		sleepText(s.sleepMinutes),
 		s.mood,
 	)
+	if s.framesLoading && hasFFTForPath(s.filePath) {
+		s.status += "  [Analyzing spectrum…]"
+	}
 	if dj := djStatusText(s.djMode, s.djCrossfader, s.djDeckBPath); dj != "" {
 		s.status += "  " + dj
 	}
@@ -1416,7 +1448,7 @@ func drawFrame(hdc uintptr, width, height int32) {
 			textOut(hdc, chrome.marginL, chrome.statusY, app.status)
 		}
 		if chrome.showHints {
-			textOut(hdc, chrome.marginL, height-30, "F8 UI style | F9 cinema | 1 OBS | 3 settings | V viz")
+			textOut(hdc, chrome.marginL, height-30, "F1 help | F8 UI style | F9 cinema | 3 settings | V viz")
 		}
 		drawButtons(hdc, width, height, palette, chrome)
 		if chrome.showVolume {
@@ -1424,6 +1456,7 @@ func drawFrame(hdc uintptr, width, height int32) {
 		}
 		drawPlaylist(hdc, width, height, palette, chrome)
 		app.drawSettingsPanel(hdc, width, height, palette, chrome)
+		app.drawHelpPanel(hdc, width, height, palette, chrome)
 	}
 	if line := app.karaokeLine(); line != "" && !app.visualOnly {
 		procSetTextColor.Call(hdc, palette.accent2)
@@ -1843,17 +1876,22 @@ func drawPlaylist(hdc uintptr, width, height int32, palette palette, chrome uiCh
 	app.playlistRowBounds = app.playlistRowBounds[:0]
 	procSetTextColor.Call(hdc, palette.dim)
 	if len(groups) > 0 && app.panelGroupKey == "" {
-		for row := 0; row < 8 && row < len(groups); row++ {
+		app.clampPanelRow(len(groups))
+		start := app.panelRow
+		for row := 0; row < panelPageSize && start+row < len(groups); row++ {
 			y := top + 38 + int32(row*24)
 			rowRect := rect{left: left + 8, top: y - 4, right: left + chrome.playlistW - 12, bottom: y + 18}
 			app.playlistRowBounds = append(app.playlistRowBounds, rowRect)
-			textOut(hdc, left+12, y, truncate(groups[row], 34))
+			textOut(hdc, left+12, y, truncate(groups[start+row], 34))
 		}
+		drawScrollHint(hdc, left, chrome.vizBottom, palette, start, min(panelPageSize, len(groups)-start), len(groups))
 		return
 	}
 	if len(entries) > 0 && app.panel >= viewLibrary {
-		for row := 0; row < 8 && row < len(entries); row++ {
-			e := entries[row]
+		app.clampPanelRow(len(entries))
+		start := app.panelRow
+		for row := 0; row < panelPageSize && start+row < len(entries); row++ {
+			e := entries[start+row]
 			y := top + 38 + int32(row*24)
 			rowRect := rect{left: left + 8, top: y - 4, right: left + chrome.playlistW - 12, bottom: y + 18}
 			app.playlistRowBounds = append(app.playlistRowBounds, rowRect)
@@ -1863,10 +1901,13 @@ func drawPlaylist(hdc uintptr, width, height int32, palette palette, chrome uiCh
 			}
 			textOut(hdc, left+12, y, truncate(label, 34))
 		}
+		drawScrollHint(hdc, left, chrome.vizBottom, palette, start, min(panelPageSize, len(entries)-start), len(entries))
 		return
 	}
-	for row := 0; row < 8 && row < len(list); row++ {
-		t := list[row]
+	app.clampPanelRow(len(list))
+	start := app.panelRow
+	for row := 0; row < panelPageSize && start+row < len(list); row++ {
+		t := list[start+row]
 		y := top + 38 + int32(row*24)
 		rowRect := rect{left: left + 8, top: y - 4, right: left + chrome.playlistW - 12, bottom: y + 18}
 		app.playlistRowBounds = append(app.playlistRowBounds, rowRect)
@@ -1876,6 +1917,7 @@ func drawPlaylist(hdc uintptr, width, height int32, palette palette, chrome uiCh
 		}
 		textOut(hdc, left+12, y, truncate(fav+t.Title, 34))
 	}
+	drawScrollHint(hdc, left, chrome.vizBottom, palette, start, min(panelPageSize, len(list)-start), len(list))
 }
 
 func (s *appState) handleButtonClick(x, y int32) bool {
@@ -2021,7 +2063,10 @@ func (s *appState) loadSettings() {
 		return
 	}
 	var cfg settings
-	if json.Unmarshal(data, &cfg) != nil {
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		backup := settingsPath() + ".bak"
+		_ = os.Rename(settingsPath(), backup)
+		s.flashStatus("Settings reset — corrupt file backed up.", 4*time.Second)
 		return
 	}
 	s.mode = cfg.Mode % modeCount

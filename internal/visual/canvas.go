@@ -4,6 +4,7 @@ import (
 	"image"
 	"image/color"
 	"image/gif"
+	"image/png"
 	"math"
 	"os"
 	"time"
@@ -170,6 +171,28 @@ func EncodeGIF(path string, frames []*Canvas, frameDelay time.Duration) error {
 	}
 	defer f.Close()
 	return gif.EncodeAll(f, outGif)
+}
+
+// WritePNG saves the canvas as a PNG image.
+func (c *Canvas) WritePNG(path string) error {
+	img := image.NewRGBA(image.Rect(0, 0, c.W, c.H))
+	for y := 0; y < c.H; y++ {
+		for x := 0; x < c.W; x++ {
+			p := c.Pix[y*c.W+x]
+			img.SetRGBA(x, y, color.RGBA{
+				R: byte(p >> 16),
+				G: byte(p >> 8),
+				B: byte(p),
+				A: 255,
+			})
+		}
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return png.Encode(f, img)
 }
 
 func palette256() color.Palette {
