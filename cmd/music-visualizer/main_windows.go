@@ -365,8 +365,8 @@ type appState struct {
 	shader             *shaderEngine
 	gifFrames          []*visual.Canvas
 	mp4Recording       bool
-	mp4FrameDir        string
 	mp4FrameCount      int
+	videoFrames        []*visual.Canvas
 	preloadPath        string
 	preloadFrames      []visual.Frame
 	preloadBusy        bool

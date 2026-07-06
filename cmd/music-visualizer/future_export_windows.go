@@ -4,11 +4,7 @@ package main
 
 import (
 	"fmt"
-	"image"
-	"image/color"
-	"image/png"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"time"
 
@@ -17,50 +13,43 @@ import (
 
 func (s *appState) toggleMp4Record() {
 	if s.mp4Recording {
-		s.finishMp4Record()
-		return
-	}
-	dir, err := os.MkdirTemp("", "mvp-mp4-*")
-	if err != nil {
-		s.flashStatus("MP4 temp folder failed.", 2*time.Second)
+		s.finishVideoRecord()
 		return
 	}
 	s.mp4Recording = true
-	s.mp4FrameDir = dir
 	s.mp4FrameCount = 0
-	s.flashStatus("Recording MP4 frames... press * to stop.", 3*time.Second)
+	s.videoFrames = s.videoFrames[:0]
+	s.flashStatus("Recording video... press * to stop.", 3*time.Second)
 }
 
 func (s *appState) captureMp4Frame() {
-	if !s.mp4Recording || s.mp4FrameDir == "" {
+	if !s.mp4Recording {
 		return
 	}
 	frame := s.renderExportFrame(640, 360)
 	if frame == nil {
 		return
 	}
-	name := filepath.Join(s.mp4FrameDir, fmt.Sprintf("frame_%05d.png", s.mp4FrameCount))
-	if err := writeCanvasPNG(name, frame); err != nil {
-		return
-	}
+	dup := visual.NewCanvas(frame.W, frame.H)
+	copy(dup.Pix, frame.Pix)
+	s.videoFrames = append(s.videoFrames, dup)
 	s.mp4FrameCount++
 	if s.mp4FrameCount >= 600 {
-		s.finishMp4Record()
+		s.finishVideoRecord()
 	}
 }
 
-func (s *appState) finishMp4Record() {
+func (s *appState) finishVideoRecord() {
 	if !s.mp4Recording {
 		return
 	}
 	s.mp4Recording = false
-	count := s.mp4FrameCount
-	dir := s.mp4FrameDir
-	s.mp4FrameDir = ""
+	count := len(s.videoFrames)
+	frames := s.videoFrames
+	s.videoFrames = nil
 	s.mp4FrameCount = 0
 	if count == 0 {
-		_ = os.RemoveAll(dir)
-		s.flashStatus("MP4 recording cancelled.", 2*time.Second)
+		s.flashStatus("Video recording cancelled.", 2*time.Second)
 		return
 	}
 	home, _ := os.UserHomeDir()
@@ -68,23 +57,12 @@ func (s *appState) finishMp4Record() {
 	if info, err := os.Stat(outDir); err != nil || !info.IsDir() {
 		outDir = home
 	}
-	outPath := filepath.Join(outDir, fmt.Sprintf("music-visualizer-%s.mp4", time.Now().Format("20060102-150405")))
-	pattern := filepath.Join(dir, "frame_%05d.png")
-	cmd := exec.Command("ffmpeg",
-		"-y", "-hide_banner", "-loglevel", "error",
-		"-framerate", fmt.Sprintf("%d", fps),
-		"-i", pattern,
-		"-c:v", "libx264", "-pix_fmt", "yuv420p",
-		outPath,
-	)
-	if err := cmd.Run(); err != nil {
-		fallback := filepath.Join(outDir, fmt.Sprintf("music-visualizer-frames-%s", time.Now().Format("20060102-150405")))
-		_ = os.Rename(dir, fallback)
-		s.flashStatus(fmt.Sprintf("ffmpeg not found — saved %d PNG frames to %s", count, fallback), 4*time.Second)
+	outPath := filepath.Join(outDir, fmt.Sprintf("music-visualizer-%s.avi", time.Now().Format("20060102-150405")))
+	if err := visual.EncodeMJPEGAVI(outPath, frames, fps); err != nil {
+		s.flashStatus("Video export failed: "+err.Error(), 3*time.Second)
 		return
 	}
-	_ = os.RemoveAll(dir)
-	s.flashStatus(fmt.Sprintf("Saved MP4 (%d frames): %s", count, outPath), 4*time.Second)
+	s.flashStatus(fmt.Sprintf("Saved video (%d frames): %s", count, outPath), 4*time.Second)
 }
 
 func (s *appState) renderExportFrame(w, h int) *visual.Canvas {
@@ -107,7 +85,6 @@ func (s *appState) renderExportFrame(w, h int) *visual.Canvas {
 	}
 	c := visual.NewCanvas(w, h)
 	c.Clear(0x00000000)
-	// Raster fallback: draw bars into canvas for export
 	if len(bars) == 0 {
 		return c
 	}
@@ -120,25 +97,4 @@ func (s *appState) renderExportFrame(w, h int) *visual.Canvas {
 		c.FillRect(x0, h-hh, x0+barW, h, col)
 	}
 	return c
-}
-
-func writeCanvasPNG(path string, c *visual.Canvas) error {
-	img := image.NewRGBA(image.Rect(0, 0, c.W, c.H))
-	for y := 0; y < c.H; y++ {
-		for x := 0; x < c.W; x++ {
-			p := c.Pix[y*c.W+x]
-			img.SetRGBA(x, y, color.RGBA{
-				R: byte(p >> 16),
-				G: byte(p >> 8),
-				B: byte(p),
-				A: 255,
-			})
-		}
-	}
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	return png.Encode(f, img)
 }

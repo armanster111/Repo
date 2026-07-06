@@ -92,7 +92,7 @@ func (s *appState) drawSettingsPanel(hdc uintptr, width, height int32, palette p
 	}
 
 	procSetTextColor.Call(hdc, palette.dim)
-	textOut(hdc, left+12, bottom-42, "Mood: "+s.mood+"  BPM: "+formatBPM(s.bpm)+"  Export: 2=GIF  *=MP4")
+	textOut(hdc, left+12, bottom-42, "Mood: "+s.mood+"  BPM: "+formatBPM(s.bpm)+"  Export: 2=GIF  *=Video")
 	textOut(hdc, left+12, bottom-22, "Overlay opacity: [ / ]   Double-click visualizer for cinema")
 }
 
