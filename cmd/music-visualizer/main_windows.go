@@ -63,9 +63,13 @@ const (
 	vkRight          = 0x27
 	vkDown           = 0x28
 	vkSpace          = 0x20
-	vkF11            = 0x7a
+	vkF5             = 0x74
+	vkF6             = 0x75
+	vkF7             = 0x76
 	vkF8             = 0x77
 	vkF9             = 0x78
+	vkF10            = 0x79
+	vkF11            = 0x7a
 	vkMediaNext      = 0xb0
 	vkMediaPrev      = 0xb1
 	vkMediaStop      = 0xb2
@@ -171,6 +175,9 @@ const (
 	modeFluid
 	modeGalaxy
 	modeChromatic
+	modeSpectrogram
+	modeOscilloscope
+	modeLissajous
 	modeCount
 )
 
@@ -238,6 +245,12 @@ type settings struct {
 	UIStyle            int           `json:"ui_style"`
 	PanelGroup         string        `json:"panel_group"`
 	PanelGroupKey      string        `json:"panel_group_key"`
+	SettingsVersion    int           `json:"settings_version"`
+	LiveFFT            bool          `json:"live_fft"`
+	MoodReactive       bool          `json:"mood_reactive"`
+	InputSource        int           `json:"input_source"`
+	OverlayAspect      int           `json:"overlay_aspect"`
+	ChromaKey          bool          `json:"chroma_key"`
 }
 
 type track struct {
@@ -377,10 +390,17 @@ type appState struct {
 	preloadBusy        bool
 	intensitySlider    rect
 	modePreviewBounds  []rect
+	pcmCache           *visual.PCMCache
+	liveFFT            bool
+	moodReactive       bool
+	inputSource        inputSource
+	specHistory        [][]float64
+	overlayAspect      overlayAspect
+	chromaKey          bool
 }
 
 var app = &appState{
-	status:             "Open or drag audio here. MP3/WAV/FLAC/OGG playback, playlists, themes, and 22 visualizers are ready.",
+	status:             "Open or drag audio here. MP3/WAV/FLAC/OGG/AIFF playback, playlists, themes, and 25 visualizers are ready.",
 	currentIndex:       -1,
 	theme:              themeNeon,
 	volume:             800,
@@ -395,6 +415,8 @@ var app = &appState{
 	overlayAlpha:       220,
 	lastMouseMove:      time.Now(),
 	remoteEnabled:      true,
+	liveFFT:            true,
+	moodReactive:       true,
 	desktop:            newDesktopInput(),
 	ultra:              newUltraEngine(),
 }
@@ -599,6 +621,14 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 			app.toggleFullscreen()
 		case vkF8:
 			app.cycleUIStyle()
+		case vkF5:
+			app.toggleLiveFFT()
+		case vkF6:
+			app.toggleMoodReactive()
+		case vkF7:
+			app.toggleChromaKey()
+		case vkF10:
+			app.cycleOverlayAspect()
 		case vkF9:
 			if app.ultra != nil {
 				app.ultra.toggleShowcase()
@@ -628,7 +658,7 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		case uintptr('H'):
 			app.saveCustomTheme()
 		case uintptr('I'):
-			app.toggleDesktopInput()
+			app.cycleInputSource()
 		case uintptr('J'):
 			app.cyclePlaybackSpeed()
 		case uintptr('K'):
@@ -881,6 +911,7 @@ func (s *appState) loadCurrentTrack(play bool) {
 
 	s.frames = nil
 	s.currentBars = nil
+	s.pcmCache = s.loadPCMForPath(path)
 	s.ambientSeed = float64(hashPath(path)%1000) / 100
 	s.loadTrackMedia(path)
 	if frames := s.takePreloadedFrames(path); len(frames) > 0 {
@@ -1062,23 +1093,7 @@ func (s *appState) toggleMute() {
 }
 
 func (s *appState) toggleDesktopInput() {
-	if s.desktop == nil {
-		s.desktop = newDesktopInput()
-	}
-	if s.desktopMode {
-		s.stopDesktopInput()
-		s.status = "Desktop audio input off. Visualizer is back on player audio."
-	} else {
-		if err := s.desktop.start(); err != nil {
-			s.status = "Desktop audio input failed: " + err.Error()
-			invalidate()
-			return
-		}
-		s.desktopMode = true
-		s.status = "Desktop audio input on. Play anything on Windows and the visualizer will react."
-	}
-	s.saveSettings()
-	invalidate()
+	s.cycleInputSource()
 }
 
 func (s *appState) stopDesktopInput() {
@@ -1264,15 +1279,7 @@ func (s *appState) updateStatus() {
 }
 
 func (s *appState) inputName() string {
-	if s.desktopMode {
-		if s.desktop != nil {
-			if errText := s.desktop.errText(); errText != "" {
-				return "Desktop error"
-			}
-		}
-		return "Desktop"
-	}
-	return "Player"
+	return s.inputSourceName()
 }
 
 func (s *appState) targetBars() []float64 {
@@ -1287,6 +1294,11 @@ func (s *appState) rawBars() []float64 {
 	if s.desktopMode && s.desktop != nil && s.desktop.isActive() {
 		if snap := s.desktop.snapshot(); len(snap) > 0 {
 			return snap
+		}
+	}
+	if s.liveFFT && s.pcmCache != nil && s.playing {
+		if bars := s.liveFFTBars(); len(bars) > 0 {
+			return bars
 		}
 	}
 	if len(s.frames) == 0 {
@@ -1385,8 +1397,14 @@ func draw(hwnd uintptr) {
 
 func drawFrame(hdc uintptr, width, height int32) {
 	palette := currentPalette()
+	if app.moodReactive {
+		palette = app.moodAdjustedPalette(palette)
+	}
 	if app.ultra != nil && app.ultra.artTintOn && app.artGrid != nil && app.uiStyle != uiStyleLight {
 		palette = app.ultra.artTint
+		if app.moodReactive {
+			palette = app.moodAdjustedPalette(palette)
+		}
 	}
 	palette = uiPaletteForStyle(app.uiStyle, palette)
 	app.uiLayout = layoutFor(app.uiStyle, width, height)
@@ -1435,6 +1453,7 @@ func drawFrame(hdc uintptr, width, height int32) {
 
 	bars := app.targetBars()
 	app.updateAnalysis(bars)
+	app.pushSpecHistory(bars)
 	beat := app.beatMultiplier(bars)
 	intensity := app.visualIntensity
 	if app.ambientMode {
@@ -1442,6 +1461,7 @@ func drawFrame(hdc uintptr, width, height int32) {
 	}
 	if app.ultra != nil {
 		bars = app.ultra.processBars(bars, intensity, beat)
+		bars = app.applyBPMPulse(bars)
 		app.currentBars = bars
 	} else {
 		for i := range bars {
@@ -1477,7 +1497,13 @@ func drawFrame(hdc uintptr, width, height int32) {
 		drawAlbumArtBackground(hdc, visualBounds, app.artGrid)
 	}
 	if app.ultra != nil {
-		drawWithEffects(hdc, visualBounds, app.currentBars, app.ultra.peakBars(), app.ultra.trailFrames(), app.mode)
+		if app.modeBlend < 1 && app.prevMode != app.mode {
+			drawWithEffectsBlend(hdc, visualBounds, app.currentBars, app.ultra.peakBars(), app.ultra.trailFrames(), app.prevMode, app.mode, app.modeBlend)
+		} else {
+			drawWithEffects(hdc, visualBounds, app.currentBars, app.ultra.peakBars(), app.ultra.trailFrames(), app.mode)
+		}
+	} else if app.modeBlend < 1 && app.prevMode != app.mode {
+		drawVisualizationBlend(hdc, visualBounds, app.currentBars, app.prevMode, app.mode, app.modeBlend)
 	} else {
 		drawVisualization(hdc, visualBounds, app.currentBars, app.mode)
 	}
@@ -1526,6 +1552,12 @@ func drawVisualization(hdc uintptr, bounds rect, bars []float64, mode visualMode
 		drawOrbit(hdc, bounds, bars)
 	case modeWaveform3D:
 		drawWaveform3D(hdc, bounds, bars)
+	case modeSpectrogram:
+		drawSpectrogram(hdc, bounds, bars)
+	case modeOscilloscope:
+		drawOscilloscope(hdc, bounds, bars)
+	case modeLissajous:
+		drawLissajous(hdc, bounds, bars)
 	default:
 		drawClassicBars(hdc, bounds, bars)
 	}
@@ -2088,6 +2120,15 @@ func (s *appState) loadSettings() {
 	s.djMode = cfg.DJMode
 	s.panelGroup = cfg.PanelGroup
 	s.uiStyle = uiStyle(cfg.UIStyle % int(uiStyleCount))
+	s.liveFFT = true
+	s.moodReactive = true
+	if cfg.SettingsVersion >= 2 {
+		s.liveFFT = cfg.LiveFFT
+		s.moodReactive = cfg.MoodReactive
+	}
+	s.inputSource = inputSource(cfg.InputSource % 3)
+	s.overlayAspect = overlayAspect(cfg.OverlayAspect % 4)
+	s.chromaKey = cfg.ChromaKey
 	for _, fav := range cfg.Favorites {
 		s.favorites[filepath.Clean(fav)] = true
 	}
@@ -2138,6 +2179,12 @@ func (s *appState) saveSettings() {
 		UIStyle:            int(s.uiStyle),
 		PanelGroup:         s.panelGroup,
 		PanelGroupKey:      s.panelGroupKey,
+		SettingsVersion:    2,
+		LiveFFT:            s.liveFFT,
+		MoodReactive:       s.moodReactive,
+		InputSource:        int(s.inputSource),
+		OverlayAspect:      int(s.overlayAspect),
+		ChromaKey:          s.chromaKey,
 	}
 	for fav, ok := range s.favorites {
 		if ok {
@@ -2443,6 +2490,12 @@ func modeName(mode visualMode) string {
 		return "Galaxy"
 	case modeChromatic:
 		return "Chromatic"
+	case modeSpectrogram:
+		return "Spectrogram"
+	case modeOscilloscope:
+		return "Oscilloscope"
+	case modeLissajous:
+		return "Lissajous"
 	default:
 		return "Classic"
 	}

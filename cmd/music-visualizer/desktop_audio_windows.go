@@ -19,6 +19,7 @@ const (
 	rpcEChangedMode      = 0x80010106
 	clsctxAll            = 0x17
 	eRender              = 0
+	eCapture             = 1
 	eConsole             = 0
 	audioShareModeShared = 0
 	audioStreamLoopback  = 0x00020000
@@ -63,20 +64,36 @@ type waveFormat struct {
 	subFormat      guid
 }
 
+type captureKind int
+
+const (
+	captureLoopback captureKind = iota
+	captureMic
+)
+
 type desktopInput struct {
-	mu          sync.RWMutex
-	bars        []float64
-	ring        []float64
-	sampleRate  int
-	active      bool
-	lastErr     error
-	stop        chan struct{}
-	sensitivity float64
-	deviceIndex int
+	mu           sync.RWMutex
+	bars         []float64
+	ring         []float64
+	ringL        []float64
+	ringR        []float64
+	sampleRate   int
+	active       bool
+	lastErr      error
+	stop         chan struct{}
+	sensitivity  float64
+	deviceIndex  int
+	kind         captureKind
 }
 
 func newDesktopInput() *desktopInput {
-	return &desktopInput{bars: make([]float64, barCount), sensitivity: 1.0}
+	return &desktopInput{bars: make([]float64, barCount), sensitivity: 1.0, kind: captureLoopback}
+}
+
+func (d *desktopInput) setCaptureKind(k captureKind) {
+	d.mu.Lock()
+	d.kind = k
+	d.mu.Unlock()
 }
 
 func (d *desktopInput) setSensitivity(v float64) {
@@ -136,6 +153,17 @@ func (d *desktopInput) snapshot() []float64 {
 	return out
 }
 
+func (d *desktopInput) stereoSnapshot() (left, right []float64) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	if len(d.ringL) == 0 {
+		return nil, nil
+	}
+	left = append([]float64(nil), d.ringL...)
+	right = append([]float64(nil), d.ringR...)
+	return left, right
+}
+
 func (d *desktopInput) errText() string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
@@ -181,7 +209,20 @@ func (d *desktopInput) runLoopback(stop <-chan struct{}) error {
 	defer comRelease(enumerator)
 
 	var device uintptr
-	hr, _, _ = comCall(enumerator, 4, eRender, eConsole, uintptr(unsafe.Pointer(&device)))
+	d.mu.RLock()
+	kind := d.kind
+	devIdx := d.deviceIndex
+	d.mu.RUnlock()
+
+	endpointType := eRender
+	if kind == captureMic {
+		endpointType = eCapture
+	}
+	if devIdx == 0 {
+		hr, _, _ = comCall(enumerator, 4, uintptr(endpointType), eConsole, uintptr(unsafe.Pointer(&device)))
+	} else {
+		hr, _, _ = comCall(enumerator, 6, uintptr(devIdx), uintptr(unsafe.Pointer(&device)))
+	}
 	if failedHRESULT(hr) {
 		return hresultError("GetDefaultAudioEndpoint", hr)
 	}
@@ -205,7 +246,11 @@ func (d *desktopInput) runLoopback(stop <-chan struct{}) error {
 	d.sampleRate = int(format.samplesPerSec)
 	d.mu.Unlock()
 
-	hr, _, _ = comCall(audioClient, 3, audioShareModeShared, audioStreamLoopback, loopbackBuffer100NS, 0, formatPtr, 0)
+	streamFlags := uint32(0)
+	if kind == captureLoopback {
+		streamFlags = audioStreamLoopback
+	}
+	hr, _, _ = comCall(audioClient, 3, audioShareModeShared, uintptr(streamFlags), loopbackBuffer100NS, 0, formatPtr, 0)
 	if failedHRESULT(hr) {
 		return hresultError("IAudioClient Initialize loopback", hr)
 	}
@@ -254,9 +299,10 @@ func (d *desktopInput) runLoopback(stop <-chan struct{}) error {
 			}
 
 			if flags&audioBufferSilent != 0 {
-				d.updateBars(nil)
+				d.updateBars(nil, nil, nil)
 			} else {
-				d.updateBars(samplesFromBuffer(data, int(frames), format))
+				left, right, mono := samplesFromBufferStereo(data, int(frames), format)
+				d.updateBars(mono, left, right)
 			}
 
 			hr, _, _ = comCall(captureClient, 4, uintptr(frames))
@@ -274,13 +320,21 @@ func (d *desktopInput) runLoopback(stop <-chan struct{}) error {
 	}
 }
 
-func (d *desktopInput) updateBars(samples []float64) {
+func (d *desktopInput) updateBars(samples, left, right []float64) {
 	target := make([]float64, barCount)
 	if len(samples) > 0 {
 		d.mu.Lock()
 		d.ring = append(d.ring, samples...)
 		if len(d.ring) > 8192 {
 			d.ring = append([]float64(nil), d.ring[len(d.ring)-8192:]...)
+		}
+		if len(left) > 0 && len(right) > 0 {
+			d.ringL = append(d.ringL, left...)
+			d.ringR = append(d.ringR, right...)
+			if len(d.ringL) > 8192 {
+				d.ringL = append([]float64(nil), d.ringL[len(d.ringL)-8192:]...)
+				d.ringR = append([]float64(nil), d.ringR[len(d.ringR)-8192:]...)
+			}
 		}
 		sr := d.sampleRate
 		ring := append([]float64(nil), d.ring...)
@@ -316,28 +370,46 @@ func (d *desktopInput) updateBars(samples []float64) {
 }
 
 func samplesFromBuffer(data uintptr, frames int, format waveFormat) []float64 {
+	mono, _, _ := samplesFromBufferStereo(data, frames, format)
+	return mono
+}
+
+func samplesFromBufferStereo(data uintptr, frames int, format waveFormat) (mono, left, right []float64) {
 	if data == 0 || frames <= 0 || format.channels == 0 || format.blockAlign == 0 {
-		return nil
+		return nil, nil, nil
 	}
 	bytesPerSample := int(format.bitsPerSample / 8)
 	if bytesPerSample <= 0 {
-		return nil
+		return nil, nil, nil
 	}
-	out := make([]float64, 0, frames)
+	mono = make([]float64, 0, frames)
+	left = make([]float64, 0, frames)
+	right = make([]float64, 0, frames)
 	blockAlign := int(format.blockAlign)
 	channels := int(format.channels)
 	totalBytes := frames * blockAlign
 	raw := unsafe.Slice((*byte)(unsafe.Pointer(data)), totalBytes)
 
 	for frame := 0; frame < frames; frame++ {
-		var sum float64
+		var sum, lVal, rVal float64
 		for ch := 0; ch < channels; ch++ {
 			offset := frame*blockAlign + ch*bytesPerSample
-			sum += sampleValue(raw[offset:offset+bytesPerSample], format)
+			v := sampleValue(raw[offset:offset+bytesPerSample], format)
+			sum += v
+			if ch == 0 {
+				lVal = v
+			} else if ch == 1 {
+				rVal = v
+			}
 		}
-		out = append(out, sum/float64(channels))
+		if channels == 1 {
+			lVal, rVal = sum, sum
+		}
+		mono = append(mono, sum/float64(channels))
+		left = append(left, lVal)
+		right = append(right, rVal)
 	}
-	return out
+	return mono, left, right
 }
 
 func sampleValue(data []byte, format waveFormat) float64 {

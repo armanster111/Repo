@@ -42,6 +42,9 @@ func (s *appState) drawSettingsPanel(hdc uintptr, width, height int32, palette p
 		{"Auto preset", "autopreset", s.autoPreset},
 		{"Remote control", "remote", s.remoteEnabled},
 		{"Party mode", "party", s.partyMode},
+		{"Live FFT", "livefft", s.liveFFT},
+		{"Mood reactive", "mood", s.moodReactive},
+		{"Chroma key", "chroma", s.chromaKey},
 	}
 	for i, row := range rows {
 		y := top + 34 + int32(i*22)
@@ -97,8 +100,8 @@ func (s *appState) drawSettingsPanel(hdc uintptr, width, height int32, palette p
 	s.drawUIStylePicker(hdc, left+12, styleTop, palette, chrome)
 
 	procSetTextColor.Call(hdc, palette.dim)
-	textOut(hdc, left+12, bottom-42, "Mood: "+s.mood+"  BPM: "+formatBPM(s.bpm)+"  Export: 2=GIF  *=Video")
-	textOut(hdc, left+12, bottom-22, "F8 UI style | Overlay: [ / ] | Double-click viz = cinema")
+	textOut(hdc, left+12, bottom-42, "Mood: "+s.mood+"  BPM: "+formatBPM(s.bpm)+"  F5 Live FFT  F6 Mood  F7 Chroma")
+	textOut(hdc, left+12, bottom-22, "F8 UI | F10 overlay aspect | I=cycle input | 1=OBS overlay")
 }
 
 func (s *appState) handleIntensitySlider(x, y int32) bool {
@@ -157,6 +160,12 @@ func (s *appState) handleSettingsClick(x, y int32) bool {
 			s.toggleRemoteControl()
 		case "party":
 			s.togglePartyMode()
+		case "livefft":
+			s.toggleLiveFFT()
+		case "mood":
+			s.toggleMoodReactive()
+		case "chroma":
+			s.toggleChromaKey()
 		}
 		return true
 	}

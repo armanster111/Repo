@@ -166,13 +166,23 @@ func drawOverlay(hwnd uintptr) {
 }
 
 func drawVisualizerOnly(hdc uintptr, width, height int32) {
-	fill(hdc, rect{0, 0, width, height}, rgb(0, 0, 0))
+	bg := rgb(0, 0, 0)
+	if app.chromaKey {
+		bg = rgb(0, 255, 0)
+	}
+	fill(hdc, rect{0, 0, width, height}, bg)
 	bars := app.targetBars()
 	if app.ultra != nil {
 		beat := app.beatMultiplier(bars)
 		bars = app.ultra.processBars(bars, app.visualIntensity, beat)
+		bars = app.applyBPMPulse(bars)
 		app.currentBars = bars
-		drawWithEffects(hdc, rect{left: 8, top: 8, right: width - 8, bottom: height - 8}, bars, app.ultra.peakBars(), app.ultra.trailFrames(), app.mode)
+		bounds := rect{left: 8, top: 8, right: width - 8, bottom: height - 8}
+		if app.modeBlend < 1 && app.prevMode != app.mode {
+			drawWithEffectsBlend(hdc, bounds, bars, app.ultra.peakBars(), app.ultra.trailFrames(), app.prevMode, app.mode, app.modeBlend)
+		} else {
+			drawWithEffects(hdc, bounds, bars, app.ultra.peakBars(), app.ultra.trailFrames(), app.mode)
+		}
 		return
 	}
 	beat := app.beatMultiplier(bars)

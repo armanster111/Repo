@@ -91,6 +91,14 @@ func (s *appState) buildFramesForPath(path string) ([]visual.Frame, time.Duratio
 		frames := visual.BuildFramesFFT(mono, sampleRate, fps, barCount)
 		duration := time.Duration(float64(len(mono)) / float64(sampleRate) * float64(time.Second))
 		return frames, duration
+	case ".aiff", ".aif":
+		mono, sampleRate, err := audio.DecodeFileAIFF(path)
+		if err != nil || len(mono) == 0 {
+			return nil, 0
+		}
+		frames := visual.BuildFramesFFT(mono, sampleRate, fps, barCount)
+		duration := time.Duration(float64(len(mono)) / float64(sampleRate) * float64(time.Second))
+		return frames, duration
 	default:
 		return nil, 0
 	}

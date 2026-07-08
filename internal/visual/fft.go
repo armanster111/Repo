@@ -68,6 +68,11 @@ func nextPow2(n int) int {
 	return p
 }
 
+// NextPow2 returns the smallest power of two >= n.
+func NextPow2(n int) int {
+	return nextPow2(n)
+}
+
 // HanningWindow applies a Hann window in-place.
 func HanningWindow(samples []float64) {
 	n := len(samples)
@@ -80,47 +85,6 @@ func HanningWindow(samples []float64) {
 	}
 }
 
-// SpectrumBars maps FFT magnitudes to logarithmically spaced visual bars.
-func SpectrumBars(magnitudes []float64, sampleRate, barCount int) []float64 {
-	if len(magnitudes) == 0 || sampleRate <= 0 || barCount <= 0 {
-		return nil
-	}
-	bars := make([]float64, barCount)
-	nyquist := float64(sampleRate) / 2
-	minHz := 40.0
-	maxHz := math.Min(16000, nyquist)
-	if maxHz <= minHz {
-		maxHz = nyquist
-	}
-	for b := 0; b < barCount; b++ {
-		t0 := float64(b) / float64(barCount)
-		t1 := float64(b+1) / float64(barCount)
-		fLow := minHz * math.Pow(maxHz/minHz, t0)
-		fHigh := minHz * math.Pow(maxHz/minHz, t1)
-		binLow := int(fLow / nyquist * float64(len(magnitudes)))
-		binHigh := int(fHigh / nyquist * float64(len(magnitudes)))
-		if binLow < 0 {
-			binLow = 0
-		}
-		if binHigh <= binLow {
-			binHigh = binLow + 1
-		}
-		if binHigh > len(magnitudes) {
-			binHigh = len(magnitudes)
-		}
-		var sum float64
-		for i := binLow; i < binHigh; i++ {
-			sum += magnitudes[i]
-		}
-		bars[b] = sum / float64(binHigh-binLow)
-	}
-	normalizeBars(bars)
-	for i := range bars {
-		bars[i] = math.Pow(bars[i], 0.82)
-	}
-	return bars
-}
-
 // AnalyzeWindow runs FFT spectrum analysis on a PCM window.
 func AnalyzeWindow(samples []float64, sampleRate, barCount int) []float64 {
 	if len(samples) == 0 {
@@ -131,5 +95,5 @@ func AnalyzeWindow(samples []float64, sampleRate, barCount int) []float64 {
 	copy(buf, samples)
 	HanningWindow(buf)
 	mags := FFT(buf)
-	return SpectrumBars(mags, sampleRate, barCount)
+	return SpectrumMelBars(mags, sampleRate, barCount)
 }
