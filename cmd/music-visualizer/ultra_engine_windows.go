@@ -24,7 +24,7 @@ type ultraEngine struct {
 func newUltraEngine() *ultraEngine {
 	return &ultraEngine{
 		smoother:   visual.NewSmoother(barCount, 0.85, 0.28, 0.35),
-		trails:     visual.NewTrailBuffer(6, barCount),
+		trails:     visual.NewTrailBuffer(3, barCount),
 		showcaseAt: time.Now(),
 	}
 }
@@ -36,7 +36,12 @@ func (e *ultraEngine) processBars(target []float64, intensity, beat float64) []f
 	dt := 1.0 / float64(fps)
 	onset, hist := visual.OnsetBeat(e.prevBars, target, e.fluxHist)
 	e.fluxHist = hist
-	e.prevBars = append([]float64(nil), target...)
+	if cap(e.prevBars) != len(target) {
+		e.prevBars = make([]float64, len(target))
+	} else {
+		e.prevBars = e.prevBars[:len(target)]
+	}
+	copy(e.prevBars, target)
 
 	combined := beat * onset
 	out := make([]float64, len(target))
@@ -139,34 +144,51 @@ func drawWithEffects(hdc uintptr, bounds rect, bars []float64, peaks []float64, 
 		return
 	}
 	palette := currentPalette()
+	if isHeavyMode(mode) {
+		drawVisualization(hdc, bounds, bars, mode)
+		if len(peaks) == len(bars) {
+			drawPeakGlow(hdc, bounds, peaks, palette)
+		}
+		return
+	}
 	for i, trail := range trails {
-		if i == 0 {
+		if i == 0 || i > 2 {
 			continue
 		}
-		fade := 0.12 + float64(len(trails)-i)*0.08
+		fade := 0.15 + float64(3-i)*0.12
 		faded := make([]float64, len(trail))
 		for j, v := range trail {
 			faded[j] = v * fade
 		}
-		drawVisualizationSoft(hdc, bounds, faded, mode, 0.35)
+		drawVisualizationSoft(hdc, bounds, faded, mode, fade)
 	}
-	drawVisualizationSoft(hdc, bounds, bars, mode, 1)
+	drawVisualization(hdc, bounds, bars, mode)
 	if len(peaks) == len(bars) {
 		drawPeakGlow(hdc, bounds, peaks, palette)
 	}
 }
 
 func drawVisualizationSoft(hdc uintptr, bounds rect, bars []float64, mode visualMode, alpha float64) {
-	if alpha < 1 {
-		// bloom pass: draw slightly expanded bounds
-		expand := int32(4 * alpha)
-		softBounds := rect{
-			left: bounds.left - expand, top: bounds.top - expand,
-			right: bounds.right + expand, bottom: bounds.bottom + expand,
-		}
-		drawVisualization(hdc, softBounds, bars, mode)
+	if alpha >= 0.98 {
+		drawVisualization(hdc, bounds, bars, mode)
+		return
 	}
-	drawVisualization(hdc, bounds, bars, mode)
+	faded := make([]float64, len(bars))
+	for i, v := range bars {
+		faded[i] = v * alpha
+	}
+	drawVisualization(hdc, bounds, faded, mode)
+}
+
+func isHeavyMode(mode visualMode) bool {
+	switch mode {
+	case modeSupernova, modeOrbit, modeParticles, modeMandala, modeStarfield,
+		modeKaleidoscope, modeTunnel, modeFire, modePlasma, modeNeonCity,
+		modeWaveform3D, modeSpectrogram, modeLissajous, modeAurora, modeLiquid:
+		return true
+	default:
+		return false
+	}
 }
 
 func drawPeakGlow(hdc uintptr, bounds rect, peaks []float64, palette palette) {

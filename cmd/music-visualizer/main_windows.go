@@ -1298,7 +1298,7 @@ func (s *appState) rawBars() []float64 {
 			return snap
 		}
 	}
-	if s.liveFFT && s.pcmCache != nil && s.playing {
+	if s.liveFFT && !s.desktopMode && s.pcmCache != nil && s.playing {
 		if bars := s.liveFFTBars(); len(bars) > 0 {
 			return bars
 		}
@@ -1455,7 +1455,9 @@ func drawFrame(hdc uintptr, width, height int32) {
 
 	bars := app.targetBars()
 	app.updateAnalysis(bars)
-	app.pushSpecHistory(bars)
+	if app.mode == modeSpectrogram {
+		app.pushSpecHistory(bars)
+	}
 	beat := app.beatMultiplier(bars)
 	intensity := app.visualIntensity
 	if app.ambientMode {
@@ -1850,13 +1852,29 @@ func drawPlaylist(hdc uintptr, width, height int32, palette palette, chrome uiCh
 	groups := app.libraryGroupsForPanel()
 	entries := app.libraryEntriesForPanel()
 	count := len(list)
-	if count == 0 {
-		count = len(groups)
-	}
-	if count == 0 {
-		count = len(entries)
+	if app.panel >= viewLibrary {
+		if len(groups) > 0 && app.panelGroupKey == "" {
+			count = len(groups)
+		} else if len(entries) > 0 {
+			count = len(entries)
+		}
 	}
 	if count == 0 && app.panel == viewQueue {
+		if !chrome.showPlaylist {
+			return
+		}
+		left := chrome.playlistLeft
+		if left < chrome.marginL {
+			return
+		}
+		top := chrome.playlistTop
+		panel := rect{left: left, top: top, right: left + chrome.playlistW, bottom: chrome.vizBottom}
+		fillPanel(hdc, panel, palette, chrome)
+		procSetTextColor.Call(hdc, palette.text)
+		textOut(hdc, left+12, top+10, "Queue (0)")
+		procSetTextColor.Call(hdc, palette.dim)
+		textOut(hdc, left+12, top+38, "Drop audio files here")
+		textOut(hdc, left+12, top+58, "or press O to open")
 		return
 	}
 	if !chrome.showPlaylist && app.panel == viewQueue {

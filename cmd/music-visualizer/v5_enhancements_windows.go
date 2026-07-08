@@ -105,14 +105,14 @@ func (s *appState) liveFFTBars() []float64 {
 }
 
 func (s *appState) pushSpecHistory(bars []float64) {
-	if len(bars) == 0 {
+	if s.mode != modeSpectrogram || len(bars) == 0 {
 		return
 	}
-	frame := make([]float64, len(bars))
-	copy(frame, bars)
 	if len(s.specHistory) >= specHistoryDepth {
 		s.specHistory = s.specHistory[1:]
 	}
+	frame := make([]float64, len(bars))
+	copy(frame, bars)
 	s.specHistory = append(s.specHistory, frame)
 }
 
@@ -346,7 +346,7 @@ func drawWithEffectsBlend(hdc uintptr, bounds rect, bars []float64, peaks []floa
 		return
 	}
 	drawWithEffects(hdc, bounds, bars, peaks, trails, modeA)
-	if blend > 0.35 {
+	if blend > 0.4 {
 		drawVisualizationSoft(hdc, bounds, bars, modeB, blend)
 	}
 }

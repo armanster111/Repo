@@ -50,11 +50,11 @@ func drawSupernova(hdc uintptr, bounds rect, bars []float64) {
 		energy += b
 	}
 	energy /= float64(len(bars))
-	for ring := 1; ring <= 12; ring++ {
-		r := maxR * (float64(ring) / 12) * (0.55 + energy*0.5)
-		alpha := byte(255 - ring*14)
+	for ring := 1; ring <= 8; ring++ {
+		r := maxR * (float64(ring) / 8) * (0.55 + energy*0.5)
+		alpha := byte(255 - ring*18)
 		for i, b := range bars {
-			if i%4 != ring%4 {
+			if i%5 != ring%5 {
 				continue
 			}
 			angle := float64(i)/float64(len(bars))*math.Pi*2 + now + float64(ring)*0.08
