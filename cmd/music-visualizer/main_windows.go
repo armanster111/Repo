@@ -590,7 +590,10 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		app.tickCinemaUI()
 		app.tickStatusFlash()
 		if app.modeBlend < 1 {
-			app.modeBlend += 0.1
+			app.modeBlend += 0.25
+			if app.modeBlend > 1 {
+				app.modeBlend = 1
+			}
 		}
 		procInvalidateRect.Call(hwnd, 0, 0)
 		if app.overlayHWND != 0 && app.overlayMode {
@@ -1192,9 +1195,8 @@ func (s *appState) seekTo(pos time.Duration, play bool) {
 }
 
 func (s *appState) cycleMode() {
-	s.prevMode = s.mode
-	s.modeBlend = 0
-	s.mode = (s.mode + 1) % modeCount
+	next := (s.mode + 1) % modeCount
+	s.setMode(next)
 	s.flashStatus("Visualizer: "+modeName(s.mode), 2*time.Second)
 	s.saveSettings()
 	invalidate()
@@ -2057,6 +2059,8 @@ func (s *appState) loadSettings() {
 		return
 	}
 	s.mode = cfg.Mode % modeCount
+	s.prevMode = s.mode
+	s.modeBlend = 1
 	s.theme = cfg.Theme % themeCount
 	s.volume = clampInt(cfg.Volume, 0, 1000)
 	if s.volume == 0 {

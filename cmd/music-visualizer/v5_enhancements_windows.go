@@ -210,16 +210,6 @@ func (s *appState) applyBPMPulse(bars []float64) []float64 {
 	return out
 }
 
-func scaleBars(bars []float64, factor float64) []float64 {
-	if factor >= 1 {
-		return bars
-	}
-	out := make([]float64, len(bars))
-	for i, v := range bars {
-		out[i] = v * factor
-	}
-	return out
-}
 
 func (s *appState) cycleInputSource() {
 	if s.desktop == nil {
@@ -345,10 +335,9 @@ func drawVisualizationBlend(hdc uintptr, bounds rect, bars []float64, modeA, mod
 		drawVisualization(hdc, bounds, bars, modeB)
 		return
 	}
-	prevBars := scaleBars(bars, 1-blend)
-	currBars := scaleBars(bars, blend)
-	drawVisualizationSoft(hdc, bounds, prevBars, modeA, 0.55)
-	drawVisualizationSoft(hdc, bounds, currBars, modeB, 0.85)
+	// Fade from previous mode to new mode using full bar heights.
+	drawVisualizationSoft(hdc, bounds, bars, modeA, 1-blend)
+	drawVisualizationSoft(hdc, bounds, bars, modeB, blend)
 }
 
 func drawWithEffectsBlend(hdc uintptr, bounds rect, bars []float64, peaks []float64, trails [][]float64, modeA, modeB visualMode, blend float64) {
@@ -356,8 +345,8 @@ func drawWithEffectsBlend(hdc uintptr, bounds rect, bars []float64, peaks []floa
 		drawWithEffects(hdc, bounds, bars, peaks, trails, modeB)
 		return
 	}
-	prevBars := scaleBars(bars, 1-blend)
-	currBars := scaleBars(bars, blend)
-	drawWithEffects(hdc, bounds, prevBars, peaks, trails, modeA)
-	drawWithEffects(hdc, bounds, currBars, peaks, trails, modeB)
+	drawWithEffects(hdc, bounds, bars, peaks, trails, modeA)
+	if blend > 0.35 {
+		drawVisualizationSoft(hdc, bounds, bars, modeB, blend)
+	}
 }

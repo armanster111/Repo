@@ -125,7 +125,7 @@ func (s *appState) handleModePreviewClick(x, y int32) bool {
 			continue
 		}
 		if i < len(previewModes) {
-			s.mode = previewModes[i]
+			s.setMode(previewModes[i])
 			s.flashStatus("Visualizer: "+modeName(s.mode), 2*time.Second)
 			s.saveSettings()
 			invalidate()
