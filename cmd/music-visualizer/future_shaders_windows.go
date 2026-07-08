@@ -28,9 +28,14 @@ type bitmapInfoHeader struct {
 }
 
 type shaderEngine struct {
-	canvas *visual.Canvas
-	fluid  *visual.FluidState
-	fluidT float64
+	canvas        *visual.Canvas
+	fade          *visual.Canvas
+	fluid         *visual.FluidState
+	fluidT        float64
+	waterfall     [][]float64
+	fractalZoom   float64
+	terrainScroll float64
+	stars         [][3]float64
 }
 
 func newShaderEngine() *shaderEngine {
@@ -52,7 +57,12 @@ func (e *shaderEngine) ensure(w, h int) {
 	h = int(float64(h) * scale)
 	if e.canvas == nil || e.canvas.W != w || e.canvas.H != h {
 		e.canvas = visual.NewCanvas(w, h)
+		e.fade = visual.NewCanvas(w, h)
 		e.fluid = visual.NewFluidState(w, h)
+		e.waterfall = nil
+		e.stars = nil
+		e.fractalZoom = 1.0
+		e.terrainScroll = 0
 	}
 }
 
@@ -93,10 +103,56 @@ func (e *shaderEngine) render(mode visualMode, bars []float64) *visual.Canvas {
 		visual.DrawPrism(e.canvas, bars, t)
 		e.canvas.ApplyBloom(0.6)
 		e.canvas.ApplyChromaticShift(1)
+	case modeNebula:
+		e.canvas.FadeFromPrevious(e.fade, 0.88)
+		visual.DrawNebula(e.canvas, bars, t, kick)
+		e.canvas.ApplyPremiumBloom(0.75)
+		e.canvas.ApplyVignette(0.45)
+	case modeSynesthesia:
+		e.canvas.FadeFromPrevious(e.fade, 0.82)
+		visual.DrawSynesthesia(e.canvas, bars, t)
+		e.canvas.ApplyPremiumBloom(0.65)
+		e.canvas.ApplyVignette(0.35)
+	case modeFractal:
+		visual.DrawFractal(e.canvas, bars, t, kick, &e.fractalZoom)
+		e.canvas.ApplyPremiumBloom(0.7)
+		e.canvas.ApplyVignette(0.4)
+	case modeTerrain:
+		visual.DrawTerrain(e.canvas, bars, t, &e.terrainScroll)
+		e.canvas.ApplyBloom(0.55)
+		e.canvas.ApplyVignette(0.35)
+	case modeHyperspace:
+		e.stars = visual.DrawHyperspace(e.canvas, bars, t, e.stars)
+		e.canvas.ApplyPremiumBloom(0.8)
+		e.canvas.ApplyVignette(0.5)
+	case modeWaterfall:
+		visual.DrawWaterfall(e.canvas, bars, &e.waterfall)
+		e.canvas.ApplyBloom(0.35)
+	case modeAuroraStorm:
+		e.canvas.FadeFromPrevious(e.fade, 0.9)
+		visual.DrawAuroraStorm(e.canvas, bars, t, kick)
+		e.canvas.ApplyPremiumBloom(0.85)
+		e.canvas.ApplyVignette(0.4)
+	case modePulseGrid:
+		visual.DrawPulseGrid(e.canvas, bars, t, kick)
+		e.canvas.ApplyPremiumBloom(0.7)
+		e.canvas.ApplyChromaticShift(1)
 	default:
 		return nil
 	}
+	if e.fade != nil && usesFadePersistence(mode) {
+		e.fade.CopyFrom(e.canvas)
+	}
 	return e.canvas
+}
+
+func usesFadePersistence(mode visualMode) bool {
+	switch mode {
+	case modeNebula, modeSynesthesia, modeAuroraStorm:
+		return true
+	default:
+		return false
+	}
 }
 
 func drawShaderMode(hdc uintptr, bounds rect, bars []float64, mode visualMode) bool {
@@ -152,7 +208,9 @@ func blitCanvas(hdc uintptr, bounds rect, c *visual.Canvas) {
 func isShaderMode(mode visualMode) bool {
 	switch mode {
 	case modeFluid, modeGalaxy, modeChromatic,
-		modeVortex, modeComets, modeBassDrop, modeRain, modePrism:
+		modeVortex, modeComets, modeBassDrop, modeRain, modePrism,
+		modeNebula, modeSynesthesia, modeFractal, modeTerrain,
+		modeHyperspace, modeWaterfall, modeAuroraStorm, modePulseGrid:
 		return true
 	default:
 		return false
@@ -186,6 +244,22 @@ func shaderPreviewColor(mode visualMode) uintptr {
 		return rgb(40, 180, 160)
 	case modePrism:
 		return rgb(220, 120, 80)
+	case modeNebula:
+		return rgb(80, 40, 180)
+	case modeSynesthesia:
+		return rgb(200, 80, 160)
+	case modeFractal:
+		return rgb(60, 180, 220)
+	case modeTerrain:
+		return rgb(40, 120, 80)
+	case modeHyperspace:
+		return rgb(100, 60, 240)
+	case modeWaterfall:
+		return rgb(40, 160, 200)
+	case modeAuroraStorm:
+		return rgb(40, 200, 120)
+	case modePulseGrid:
+		return rgb(200, 60, 220)
 	case modeClassic:
 		return rgb(60, 180, 120)
 	case modeAurora:
@@ -219,6 +293,22 @@ func formatShaderStatus(mode visualMode) string {
 		return "GPU Rain"
 	case modePrism:
 		return "GPU Prism"
+	case modeNebula:
+		return "GPU Nebula"
+	case modeSynesthesia:
+		return "GPU Synesthesia"
+	case modeFractal:
+		return "GPU Fractal"
+	case modeTerrain:
+		return "GPU Terrain"
+	case modeHyperspace:
+		return "GPU Hyperspace"
+	case modeWaterfall:
+		return "GPU Waterfall"
+	case modeAuroraStorm:
+		return "GPU Aurora Storm"
+	case modePulseGrid:
+		return "GPU Pulse Grid"
 	default:
 		return ""
 	}

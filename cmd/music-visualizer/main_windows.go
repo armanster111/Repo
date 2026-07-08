@@ -183,6 +183,14 @@ const (
 	modeBassDrop
 	modeRain
 	modePrism
+	modeNebula
+	modeSynesthesia
+	modeFractal
+	modeTerrain
+	modeHyperspace
+	modeWaterfall
+	modeAuroraStorm
+	modePulseGrid
 	modeCount
 )
 
@@ -409,7 +417,7 @@ type appState struct {
 }
 
 var app = &appState{
-	status:             "Open or drag audio here. 30 visualizers, live browser viz at :8765/viz, kick/snare engine ready.",
+	status:             "Open or drag audio here. 38 visualizers, live browser viz at :8765/viz, kick/snare engine ready.",
 	currentIndex:       -1,
 	theme:              themeNeon,
 	volume:             800,
@@ -2559,6 +2567,22 @@ func modeName(mode visualMode) string {
 		return "Rain"
 	case modePrism:
 		return "Prism"
+	case modeNebula:
+		return "Nebula"
+	case modeSynesthesia:
+		return "Synesthesia"
+	case modeFractal:
+		return "Fractal"
+	case modeTerrain:
+		return "Terrain"
+	case modeHyperspace:
+		return "Hyperspace"
+	case modeWaterfall:
+		return "Waterfall"
+	case modeAuroraStorm:
+		return "Aurora Storm"
+	case modePulseGrid:
+		return "Pulse Grid"
 	default:
 		return "Classic"
 	}

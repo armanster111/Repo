@@ -74,6 +74,8 @@ func (e *ultraEngine) tickShowcase() {
 	showcaseModes := []visualMode{
 		modeKaleidoscope, modeSupernova, modeNeonCity, modeOrbit,
 		modeLiquid, modeHalo, modeAurora, modeWaveform3D,
+		modeNebula, modeHyperspace, modeAuroraStorm, modeFractal,
+		modeSynesthesia, modePulseGrid,
 	}
 	for i, m := range showcaseModes {
 		if m == app.mode {
@@ -185,7 +187,9 @@ func isHeavyMode(mode visualMode) bool {
 	case modeSupernova, modeOrbit, modeParticles, modeMandala, modeStarfield,
 		modeKaleidoscope, modeTunnel, modeFire, modePlasma, modeNeonCity,
 		modeWaveform3D, modeSpectrogram, modeLissajous, modeAurora, modeLiquid,
-		modeVortex, modeComets, modeBassDrop, modeRain, modePrism:
+		modeVortex, modeComets, modeBassDrop, modeRain, modePrism,
+		modeNebula, modeSynesthesia, modeFractal, modeTerrain,
+		modeHyperspace, modeWaterfall, modeAuroraStorm, modePulseGrid:
 		return true
 	default:
 		return false

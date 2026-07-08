@@ -1,26 +1,26 @@
-# Music Visualizer Ultra — 10x Edition
+# Music Visualizer Ultra — Premium Edition
 
-The most advanced standalone Windows music visualizer. **30 GPU-accelerated modes**, **kick/snare/hi-hat beat engine**, **live browser visualizer**, adaptive performance, cinema showcase, OBS overlay, mic input, library, lyrics, DJ mode, and LAN remote control. One `.exe`, no install.
+The most advanced standalone Windows music visualizer. **38 GPU-accelerated modes**, **kick/snare/hi-hat beat engine**, **live browser visualizer**, adaptive performance, cinema showcase, OBS overlay, mic input, library, lyrics, DJ mode, and LAN remote control. One `.exe`, no install.
 
 ## Download
 
-**Latest build:** https://github.com/armanster111/Repo/raw/cursor/10x-upgrade-8f03/dist/MusicVisualizerPro-Windows.zip
+**Latest build:** https://github.com/armanster111/Repo/raw/cursor/premium-visuals-8f03/dist/MusicVisualizerPro-Windows.zip
 
 Extract → double-click `MusicVisualizerPro.exe`
 
 ---
 
-## What makes it 10x
+## What makes it premium
 
 | Pillar | What's new |
 |--------|------------|
-| **30 visual modes** | Vortex, Comets, Bass Drop, Rain, Prism + all previous modes |
+| **38 visual modes** | 8 new premium shaders: Nebula, Synesthesia, Fractal, Terrain, Hyperspace, Waterfall, Aurora Storm, Pulse Grid |
 | **Kick/snare engine** | Separate onset detection for bass, mid, treble — visuals punch on kicks |
-| **Full-res GPU canvas** | Fluid, Galaxy, Chromatic, and 5 new shaders at native resolution with bloom |
+| **Full-res GPU canvas** | Fluid, Galaxy, Chromatic, and 13 canvas shaders at native resolution with bloom + vignette |
 | **Live browser viz** | Open **http://localhost:8765/viz** on any device on your LAN — real-time spectrum |
 | **Adaptive performance** | Auto-scales quality when frames drop — stays smooth on any PC |
 | **Mel-scale FFT** | Perceptual A-weighted analysis for all formats + desktop/mic input |
-| **12 premium presets** | Bass Drop, Vortex Dream, Comet Storm, Supernova Cinema, and more (press 8) |
+| **18 premium presets** | Nebula Dream, Hyperspace, Aurora Storm, Pulse Grid, and more (press 8) |
 | **OBS-ready** | Overlay, chroma key (F7), aspect ratios (F10), 60 FPS |
 
 ---
@@ -29,7 +29,7 @@ Extract → double-click `MusicVisualizerPro.exe`
 
 | Key | Action |
 |-----|--------|
-| **V** | Cycle 30 visualizers |
+| **V** | Cycle 38 visualizers |
 | **F5** | Toggle live FFT |
 | **F6** | Toggle mood-reactive colors |
 | **F7** | Chroma key (OBS green screen) |
@@ -52,15 +52,28 @@ API: `GET http://localhost:8765/api/bars` returns JSON with 64-band spectrum, ki
 
 ---
 
-## All 30 modes (press V)
+## All 38 modes (press V)
 
-Classic · Mirror · Blocks · Wave · Halo · Spectrum · Fire · Particles · Tunnel · Plasma · Aurora · Mandala · Starfield · Kaleidoscope · Neon City · Supernova · Liquid · Orbit · Waveform 3D · Fluid · Galaxy · Chromatic · Spectrogram · Oscilloscope · Lissajous · **Vortex** · **Comets** · **Bass Drop** · **Rain** · **Prism**
+Classic · Mirror · Blocks · Wave · Halo · Spectrum · Fire · Particles · Tunnel · Plasma · Aurora · Mandala · Starfield · Kaleidoscope · Neon City · Supernova · Liquid · Orbit · Waveform 3D · Fluid · Galaxy · Chromatic · Spectrogram · Oscilloscope · Lissajous · Vortex · Comets · Bass Drop · Rain · Prism · **Nebula** · **Synesthesia** · **Fractal** · **Terrain** · **Hyperspace** · **Waterfall** · **Aurora Storm** · **Pulse Grid**
+
+### Premium highlights
+
+| Mode | Description |
+|------|-------------|
+| **Nebula** | Volumetric gas clouds colored by frequency bands, with motion persistence |
+| **Synesthesia** | Flowing color ribbons — one per frequency band |
+| **Fractal** | Bass-driven Julia set zoom with psychedelic coloring |
+| **Terrain** | Scrolling 3D frequency landscape receding into the horizon |
+| **Hyperspace** | Warp-speed star tunnel that accelerates with the bass |
+| **Waterfall** | Live scrolling spectrogram history |
+| **Aurora Storm** | Northern lights curtains with bass shimmer |
+| **Pulse Grid** | Cyberpunk perspective grid pulsing on every kick |
 
 ---
 
 ## For streamers
 
-1. Press **F9** for cinema mode
+1. Press **F9** for cinema mode (auto-cycles premium visuals)
 2. Press **1** for OBS overlay window
 3. Add Browser Source → `http://localhost:8765/viz` for a zero-CPU overlay option
 4. **F7** enables green-screen chroma key on the native overlay

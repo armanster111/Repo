@@ -46,6 +46,13 @@ func defaultPresets() []presets.Preset {
 		{Name: "Rain Chamber", Mode: int(modeRain), Theme: int(themeOcean), VisualIntensity: 0.95, Ambient: true},
 		{Name: "Supernova Cinema", Mode: int(modeSupernova), Theme: int(themeNeon), VisualIntensity: 1.4},
 		{Name: "GPU Galaxy", Mode: int(modeGalaxy), Theme: int(themeCyberpunk), VisualIntensity: 1.2},
+		{Name: "Nebula Dream", Mode: int(modeNebula), Theme: int(themeCyberpunk), VisualIntensity: 1.3, Ambient: true},
+		{Name: "Synesthesia", Mode: int(modeSynesthesia), Theme: int(themeNeon), VisualIntensity: 1.2},
+		{Name: "Fractal Zoom", Mode: int(modeFractal), Theme: int(themeOcean), VisualIntensity: 1.1},
+		{Name: "Hyperspace", Mode: int(modeHyperspace), Theme: int(themeCyberpunk), VisualIntensity: 1.4},
+		{Name: "Aurora Storm", Mode: int(modeAuroraStorm), Theme: int(themeOcean), VisualIntensity: 1.2, Ambient: true},
+		{Name: "Pulse Grid", Mode: int(modePulseGrid), Theme: int(themeNeon), VisualIntensity: 1.3},
+		{Name: "Waterfall Spec", Mode: int(modeWaterfall), Theme: int(themeCyberpunk), VisualIntensity: 1.0},
 	}
 }
 
