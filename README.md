@@ -1,38 +1,27 @@
-# Music Visualizer Ultra
+# Music Visualizer Ultra — 10x Edition
 
-The most advanced standalone Windows music visualizer — **60 FPS**, **mel-scale FFT spectrum analysis**, **25 visual modes**, cinema showcase, OBS overlay, microphone input, library, lyrics, DJ mode, and LAN remote control. One `.exe`, no install.
+The most advanced standalone Windows music visualizer. **30 GPU-accelerated modes**, **kick/snare/hi-hat beat engine**, **live browser visualizer**, adaptive performance, cinema showcase, OBS overlay, mic input, library, lyrics, DJ mode, and LAN remote control. One `.exe`, no install.
 
 ## Download
 
-1. **[MusicVisualizerPro-Windows.zip](https://github.com/armanster111/Repo/raw/cursor/music-visualizer-exe-7b99/dist/MusicVisualizerPro-Windows.zip)**
-2. Extract → double-click **`MusicVisualizerPro.exe`**
+**Latest build:** https://github.com/armanster111/Repo/raw/cursor/10x-upgrade-8f03/dist/MusicVisualizerPro-Windows.zip
 
-Direct EXE: https://github.com/armanster111/Repo/raw/cursor/music-visualizer-exe-7b99/dist/MusicVisualizerPro.exe
+Extract → double-click `MusicVisualizerPro.exe`
 
 ---
 
-## What makes it best-in-class
+## What makes it 10x
 
-| Feature | Details |
-|--------|---------|
-| **60 FPS** | Silky-smooth rendering with double-buffered output |
-| **Mel-scale FFT** | Perceptual frequency analysis (A-weighted, 64 mel bands) for all decodable formats |
-| **25 visual modes** | Including Spectrogram, Oscilloscope, Lissajous, Neon City, Supernova, Liquid, and more |
-| **Live FFT** | Real-time spectrum during playback — reacts to volume/EQ changes (F5) |
-| **Mood-reactive** | Palette and mode adapt to detected mood; BPM-synced bass pulse (F6) |
-| **Mode crossfade** | Smooth transitions when cycling visualizers (V) |
-| **Microphone input** | WASAPI capture — press I to cycle Player → Desktop → Mic |
-| **Motion trails & bloom** | Afterglow trails + peak-hold glow on every mode |
-| **Beat detection** | Spectral-flux onset detection for punchy beat hits |
-| **Cinema mode** | **F9** — fullscreen auto-cycling premium visuals every 12 seconds |
-| **Album-reactive colors** | Palette tints from album art automatically |
-| **Desktop audio** | WASAPI loopback with FFT — visualizes Spotify, YouTube, games |
-| **OBS overlay** | **1** — transparent topmost window; **F10** cycles 16:9 / 4:3 / 1:1 aspect; F7 chroma key |
-| **Online lyrics** | Auto-fetch + karaoke overlay |
-| **Music library** | Artist/album/top-played views with click-to-play |
-| **Presets & packs** | Save/share looks; drop JSON packs in `%APPDATA%\MusicVisualizerPro\packs\` |
-| **DJ mode** | Dual-deck crossfader |
-| **Remote** | http://localhost:8765 |
+| Pillar | What's new |
+|--------|------------|
+| **30 visual modes** | Vortex, Comets, Bass Drop, Rain, Prism + all previous modes |
+| **Kick/snare engine** | Separate onset detection for bass, mid, treble — visuals punch on kicks |
+| **Full-res GPU canvas** | Fluid, Galaxy, Chromatic, and 5 new shaders at native resolution with bloom |
+| **Live browser viz** | Open **http://localhost:8765/viz** on any device on your LAN — real-time spectrum |
+| **Adaptive performance** | Auto-scales quality when frames drop — stays smooth on any PC |
+| **Mel-scale FFT** | Perceptual A-weighted analysis for all formats + desktop/mic input |
+| **12 premium presets** | Bass Drop, Vortex Dream, Comet Storm, Supernova Cinema, and more (press 8) |
+| **OBS-ready** | Overlay, chroma key (F7), aspect ratios (F10), 60 FPS |
 
 ---
 
@@ -40,43 +29,48 @@ Direct EXE: https://github.com/armanster111/Repo/raw/cursor/music-visualizer-exe
 
 | Key | Action |
 |-----|--------|
+| **V** | Cycle 30 visualizers |
 | **F5** | Toggle live FFT |
-| **F6** | Toggle mood-reactive visuals |
-| **F7** | Toggle chroma key (OBS green screen) |
-| **F9** | Cinema showcase (best demo mode) |
-| **V** | Cycle 25 visualizers |
+| **F6** | Toggle mood-reactive colors |
+| **F7** | Chroma key (OBS green screen) |
+| **F9** | Cinema showcase |
+| **F10** | Overlay aspect ratio |
 | **I** | Cycle input: Player → Desktop → Mic |
-| **F10** | Cycle overlay aspect ratio (16:9 / 4:3 / 1:1) |
+| **8** / **9** | Cycle / save preset |
 | **1** | OBS overlay |
 | **3** | Settings panel |
-| **7** | Rescan library |
-| **8** / **9** | Cycle / save preset |
-| **6** | Party mode |
-| **Z** | Visual-only fullscreen |
-| **Space** | Play/pause |
 
 ---
 
-## Visual modes (press V)
+## Live browser visualizer
 
-Classic · Mirror · Blocks · Wave · Halo · Spectrum · Fire · Particles · Tunnel · Plasma · Aurora · Mandala · Starfield · Kaleidoscope · **Neon City** · **Supernova** · **Liquid** · **Orbit** · **Waveform 3D** · Fluid · Galaxy · Chromatic · **Spectrogram** · **Oscilloscope** · **Lissajous**
+1. Launch the app (remote control is on by default)
+2. Open **http://localhost:8765/viz** in Chrome/Edge/Firefox
+3. Full-screen the browser tab on a second monitor or stream it via OBS Browser Source
+
+API: `GET http://localhost:8765/api/bars` returns JSON with 64-band spectrum, kick/snare levels, BPM, mood, and track info.
+
+---
+
+## All 30 modes (press V)
+
+Classic · Mirror · Blocks · Wave · Halo · Spectrum · Fire · Particles · Tunnel · Plasma · Aurora · Mandala · Starfield · Kaleidoscope · Neon City · Supernova · Liquid · Orbit · Waveform 3D · Fluid · Galaxy · Chromatic · Spectrogram · Oscilloscope · Lissajous · **Vortex** · **Comets** · **Bass Drop** · **Rain** · **Prism**
 
 ---
 
 ## For streamers
 
-1. Press **F9** for cinema mode (looks incredible on stream)
+1. Press **F9** for cinema mode
 2. Press **1** for OBS overlay window
-3. Add Window Capture in OBS → pick "Music Visualizer Overlay"
+3. Add Browser Source → `http://localhost:8765/viz` for a zero-CPU overlay option
+4. **F7** enables green-screen chroma key on the native overlay
 
 ---
 
-## Build from source (optional)
+## Build from source
 
 ```bat
 build-windows.bat
 ```
-
----
 
 SmartScreen may warn on unsigned apps → **More info → Run anyway**.

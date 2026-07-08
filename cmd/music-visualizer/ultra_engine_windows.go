@@ -144,7 +144,7 @@ func drawWithEffects(hdc uintptr, bounds rect, bars []float64, peaks []float64, 
 		return
 	}
 	palette := currentPalette()
-	if isHeavyMode(mode) {
+	if isHeavyMode(mode) || (app.perf != nil && app.perf.skipTrails) {
 		drawVisualization(hdc, bounds, bars, mode)
 		if len(peaks) == len(bars) {
 			drawPeakGlow(hdc, bounds, peaks, palette)
@@ -184,7 +184,8 @@ func isHeavyMode(mode visualMode) bool {
 	switch mode {
 	case modeSupernova, modeOrbit, modeParticles, modeMandala, modeStarfield,
 		modeKaleidoscope, modeTunnel, modeFire, modePlasma, modeNeonCity,
-		modeWaveform3D, modeSpectrogram, modeLissajous, modeAurora, modeLiquid:
+		modeWaveform3D, modeSpectrogram, modeLissajous, modeAurora, modeLiquid,
+		modeVortex, modeComets, modeBassDrop, modeRain, modePrism:
 		return true
 	default:
 		return false

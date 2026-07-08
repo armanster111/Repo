@@ -31,6 +31,7 @@ func (s *appState) startRemoteControl() {
 		return
 	}
 	mux := http.NewServeMux()
+	registerVizRoutes(mux)
 	mux.HandleFunc("/api/nowplaying", func(w http.ResponseWriter, r *http.Request) {
 		st := s.remoteSnapshot()
 		w.Header().Set("Content-Type", "application/json")

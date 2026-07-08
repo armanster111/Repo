@@ -39,6 +39,13 @@ func defaultPresets() []presets.Preset {
 		{Name: "Ocean Wave", Mode: int(modeWave), Theme: int(themeOcean), VisualIntensity: 0.9},
 		{Name: "Lava Fire", Mode: int(modeFire), Theme: int(themeLava), VisualIntensity: 1.1},
 		{Name: "Party Plasma", Mode: int(modePlasma), Theme: int(themeCyberpunk), VisualIntensity: 1.4, Karaoke: true},
+		{Name: "Bass Drop", Mode: int(modeBassDrop), Theme: int(themeCyberpunk), VisualIntensity: 1.5},
+		{Name: "Vortex Dream", Mode: int(modeVortex), Theme: int(themeOcean), VisualIntensity: 1.2},
+		{Name: "Comet Storm", Mode: int(modeComets), Theme: int(themeNeon), VisualIntensity: 1.3},
+		{Name: "Prism Break", Mode: int(modePrism), Theme: int(themeLava), VisualIntensity: 1.1},
+		{Name: "Rain Chamber", Mode: int(modeRain), Theme: int(themeOcean), VisualIntensity: 0.95, Ambient: true},
+		{Name: "Supernova Cinema", Mode: int(modeSupernova), Theme: int(themeNeon), VisualIntensity: 1.4},
+		{Name: "GPU Galaxy", Mode: int(modeGalaxy), Theme: int(themeCyberpunk), VisualIntensity: 1.2},
 	}
 }
 

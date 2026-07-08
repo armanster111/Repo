@@ -44,9 +44,15 @@ func (e *shaderEngine) ensure(w, h int) {
 	if h < 8 {
 		h = 8
 	}
+	scale := 1.0
+	if app.perf != nil {
+		scale = app.perf.canvasScale()
+	}
+	w = int(float64(w) * scale)
+	h = int(float64(h) * scale)
 	if e.canvas == nil || e.canvas.W != w || e.canvas.H != h {
 		e.canvas = visual.NewCanvas(w, h)
-		e.fluid = visual.NewFluidState(w/2, h/2)
+		e.fluid = visual.NewFluidState(w, h)
 	}
 }
 
@@ -56,6 +62,10 @@ func (e *shaderEngine) render(mode visualMode, bars []float64) *visual.Canvas {
 	}
 	t := visual.Now()
 	e.fluidT = t
+	kick := 0.0
+	if app.onset != nil {
+		kick = app.onset.Kick
+	}
 	switch mode {
 	case modeFluid:
 		visual.StepFluid(e.fluid, e.canvas, bars, t)
@@ -67,6 +77,22 @@ func (e *shaderEngine) render(mode visualMode, bars []float64) *visual.Canvas {
 		visual.DrawChromaticBurst(e.canvas, bars, t)
 		e.canvas.ApplyBloom(0.7)
 		e.canvas.ApplyChromaticShift(2)
+	case modeVortex:
+		visual.DrawVortex(e.canvas, bars, t, kick)
+		e.canvas.ApplyBloom(0.65)
+	case modeComets:
+		visual.DrawComets(e.canvas, bars, t)
+		e.canvas.ApplyBloom(0.5)
+	case modeBassDrop:
+		visual.DrawBassDrop(e.canvas, bars, t, kick)
+		e.canvas.ApplyBloom(0.75)
+	case modeRain:
+		visual.DrawRain(e.canvas, bars, t)
+		e.canvas.ApplyBloom(0.4)
+	case modePrism:
+		visual.DrawPrism(e.canvas, bars, t)
+		e.canvas.ApplyBloom(0.6)
+		e.canvas.ApplyChromaticShift(1)
 	default:
 		return nil
 	}
@@ -92,7 +118,6 @@ func blitCanvas(hdc uintptr, bounds rect, c *visual.Canvas) {
 	if c == nil || len(c.Pix) == 0 {
 		return
 	}
-	// BGRA bottom-up DIB for SetDIBitsToDevice
 	bgra := make([]byte, c.W*c.H*4)
 	for y := 0; y < c.H; y++ {
 		srcY := y
@@ -126,7 +151,8 @@ func blitCanvas(hdc uintptr, bounds rect, c *visual.Canvas) {
 
 func isShaderMode(mode visualMode) bool {
 	switch mode {
-	case modeFluid, modeGalaxy, modeChromatic:
+	case modeFluid, modeGalaxy, modeChromatic,
+		modeVortex, modeComets, modeBassDrop, modeRain, modePrism:
 		return true
 	default:
 		return false
@@ -150,6 +176,16 @@ func shaderPreviewColor(mode visualMode) uintptr {
 		return rgb(80, 60, 200)
 	case modeChromatic:
 		return rgb(200, 60, 140)
+	case modeVortex:
+		return rgb(60, 140, 220)
+	case modeComets:
+		return rgb(100, 80, 240)
+	case modeBassDrop:
+		return rgb(200, 60, 180)
+	case modeRain:
+		return rgb(40, 180, 160)
+	case modePrism:
+		return rgb(220, 120, 80)
 	case modeClassic:
 		return rgb(60, 180, 120)
 	case modeAurora:
@@ -173,8 +209,17 @@ func formatShaderStatus(mode visualMode) string {
 		return "GPU Galaxy"
 	case modeChromatic:
 		return "GPU Chromatic"
+	case modeVortex:
+		return "GPU Vortex"
+	case modeComets:
+		return "GPU Comets"
+	case modeBassDrop:
+		return "GPU Bass Drop"
+	case modeRain:
+		return "GPU Rain"
+	case modePrism:
+		return "GPU Prism"
 	default:
 		return ""
 	}
 }
-

@@ -178,6 +178,11 @@ const (
 	modeSpectrogram
 	modeOscilloscope
 	modeLissajous
+	modeVortex
+	modeComets
+	modeBassDrop
+	modeRain
+	modePrism
 	modeCount
 )
 
@@ -397,10 +402,12 @@ type appState struct {
 	specHistory        [][]float64
 	overlayAspect      overlayAspect
 	chromaKey          bool
+	onset              *visual.OnsetEngine
+	perf               *perfEngine
 }
 
 var app = &appState{
-	status:             "Open or drag audio here. MP3/WAV/FLAC/OGG/AIFF playback, playlists, themes, and 25 visualizers are ready.",
+	status:             "Open or drag audio here. 30 visualizers, live browser viz at :8765/viz, kick/snare engine ready.",
 	currentIndex:       -1,
 	theme:              themeNeon,
 	volume:             800,
@@ -419,6 +426,8 @@ var app = &appState{
 	moodReactive:       true,
 	desktop:            newDesktopInput(),
 	ultra:              newUltraEngine(),
+	onset:              visual.NewOnsetEngine(),
+	perf:               newPerfEngine(),
 }
 
 type point struct {
@@ -1455,10 +1464,20 @@ func drawFrame(hdc uintptr, width, height int32) {
 
 	bars := app.targetBars()
 	app.updateAnalysis(bars)
+	if app.onset != nil {
+		app.onset.Update(bars, app.bpm, 1.0/float64(fps))
+	}
 	if app.mode == modeSpectrogram {
 		app.pushSpecHistory(bars)
 	}
+	if app.perf != nil {
+		app.perf.tickFrame()
+	}
+	app.publishBarsStream(bars)
 	beat := app.beatMultiplier(bars)
+	if app.onset != nil {
+		beat = math.Max(beat, app.onset.CombinedBeat())
+	}
 	intensity := app.visualIntensity
 	if app.ambientMode {
 		intensity *= 0.65
@@ -2518,6 +2537,16 @@ func modeName(mode visualMode) string {
 		return "Oscilloscope"
 	case modeLissajous:
 		return "Lissajous"
+	case modeVortex:
+		return "Vortex"
+	case modeComets:
+		return "Comets"
+	case modeBassDrop:
+		return "Bass Drop"
+	case modeRain:
+		return "Rain"
+	case modePrism:
+		return "Prism"
 	default:
 		return "Classic"
 	}

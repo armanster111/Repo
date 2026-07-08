@@ -180,7 +180,7 @@ func (s *appState) toggleRemoteControl() {
 	} else {
 		s.startRemoteControl()
 		s.remoteEnabled = true
-		s.flashStatus("Remote: http://localhost:8765", 3*time.Second)
+		s.flashStatus("Remote: http://localhost:8765  Live viz: /viz", 4*time.Second)
 	}
 	s.saveSettings()
 	invalidate()
