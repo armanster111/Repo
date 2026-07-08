@@ -404,6 +404,8 @@ type appState struct {
 	chromaKey          bool
 	onset              *visual.OnsetEngine
 	perf               *perfEngine
+	lastPaintBars      []float64
+	uiDirty            bool
 }
 
 var app = &appState{
@@ -604,8 +606,11 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 				app.modeBlend = 1
 			}
 		}
-		procInvalidateRect.Call(hwnd, 0, 0)
-		if app.overlayHWND != 0 && app.overlayMode {
+		invalidateIfNeeded()
+		if app.uiDirty {
+			app.uiDirty = false
+		}
+		if app.overlayHWND != 0 && app.overlayMode && app.needsAnimation() {
 			procInvalidateRect.Call(app.overlayHWND, 0, 0)
 		}
 		return 0
@@ -1423,45 +1428,6 @@ func drawFrame(hdc uintptr, width, height int32) {
 
 	fill(hdc, rect{left: 0, top: 0, right: width, bottom: height}, palette.background)
 
-	procSetBkMode.Call(hdc, transparent)
-	procSetTextColor.Call(hdc, palette.text)
-	textOut(hdc, chrome.marginL, chrome.titleY, appTitle+" Ultra")
-	if app.ultra != nil && app.ultra.showcase && !app.cinemaUIVisible() {
-		procSetTextColor.Call(hdc, palette.dim)
-		textOut(hdc, chrome.marginL, height-36, "Cinema mode — move mouse for controls, Esc to exit, F9 toggle")
-	} else if !app.mini && !app.visualOnly {
-		procSetTextColor.Call(hdc, palette.dim)
-		hasMeta := app.meta.Title != ""
-		if hasMeta {
-			metaLine := fmt.Sprintf("%s — %s", app.meta.Title, app.meta.Artist)
-			if line := app.currentLyric(); line != "" {
-				metaLine += " | " + line
-			}
-			textOut(hdc, chrome.marginL, chrome.metaY, metaLine)
-			if chrome.metaY != chrome.statusY {
-				textOut(hdc, chrome.marginL, chrome.statusY, app.status)
-			}
-		} else {
-			textOut(hdc, chrome.marginL, chrome.statusY, app.status)
-		}
-		if chrome.showHints {
-			textOut(hdc, chrome.marginL, height-30, "F8 UI style | F9 cinema | 1 OBS | 3 settings | V viz")
-		}
-		drawButtons(hdc, width, height, palette, chrome)
-		if chrome.showVolume {
-			app.drawVolumeSlider(hdc, width, palette, chrome)
-		}
-		drawPlaylist(hdc, width, height, palette, chrome)
-		app.drawSettingsPanel(hdc, width, height, palette, chrome)
-	}
-	if line := app.karaokeLine(); line != "" && !app.visualOnly {
-		procSetTextColor.Call(hdc, palette.accent2)
-		textOut(hdc, chrome.marginL, height-52, line)
-	}
-	if !app.visualOnly {
-		drawProgress(hdc, width, palette, chrome)
-	}
-
 	bars := app.targetBars()
 	app.updateAnalysis(bars)
 	if app.onset != nil {
@@ -1474,6 +1440,7 @@ func drawFrame(hdc uintptr, width, height int32) {
 		app.perf.tickFrame()
 	}
 	app.publishBarsStream(bars)
+	app.barsChanged(bars)
 	beat := app.beatMultiplier(bars)
 	if app.onset != nil {
 		beat = math.Max(beat, app.onset.CombinedBeat())
@@ -1505,30 +1472,75 @@ func drawFrame(hdc uintptr, width, height int32) {
 		}
 	}
 
-	top := chrome.vizTop
-	bottom := chrome.vizBottom
+	visualBounds := chrome.visualBounds(width, height)
 	if app.mini || app.visualOnly {
-		top = 28
-		bottom = height - 28
+		visualBounds = rect{left: 8, top: 28, right: width - 8, bottom: height - 28}
 	}
-	if bottom <= top {
+	if visualBounds.bottom > visualBounds.top {
+		if app.artGrid != nil && !app.visualOnly {
+			withClipRgn(hdc, visualBounds, func() {
+				drawAlbumArtBackground(hdc, visualBounds, app.artGrid)
+			})
+		}
+		withClipRgn(hdc, visualBounds, func() {
+			if app.ultra != nil {
+				if app.modeBlend < 1 && app.prevMode != app.mode {
+					drawWithEffectsBlend(hdc, visualBounds, app.currentBars, app.ultra.peakBars(), app.ultra.trailFrames(), app.prevMode, app.mode, app.modeBlend)
+				} else {
+					drawWithEffects(hdc, visualBounds, app.currentBars, app.ultra.peakBars(), app.ultra.trailFrames(), app.mode)
+				}
+			} else if app.modeBlend < 1 && app.prevMode != app.mode {
+				drawVisualizationBlend(hdc, visualBounds, app.currentBars, app.prevMode, app.mode, app.modeBlend)
+			} else {
+				drawVisualization(hdc, visualBounds, app.currentBars, app.mode)
+			}
+		})
+	}
+
+	if app.mini || app.visualOnly {
 		return
 	}
 
-	visualBounds := chrome.visualBounds(width, height)
-	if app.artGrid != nil && !app.visualOnly {
-		drawAlbumArtBackground(hdc, visualBounds, app.artGrid)
-	}
-	if app.ultra != nil {
-		if app.modeBlend < 1 && app.prevMode != app.mode {
-			drawWithEffectsBlend(hdc, visualBounds, app.currentBars, app.ultra.peakBars(), app.ultra.trailFrames(), app.prevMode, app.mode, app.modeBlend)
+	drawChromeHeader(hdc, width, palette, chrome)
+
+	procSetBkMode.Call(hdc, transparent)
+	procSetTextColor.Call(hdc, palette.text)
+	textOut(hdc, chrome.marginL, chrome.titleY, appTitle+" Ultra")
+	if app.ultra != nil && app.ultra.showcase && !app.cinemaUIVisible() {
+		procSetTextColor.Call(hdc, palette.dim)
+		textOut(hdc, chrome.marginL, height-36, "Cinema mode — move mouse for controls, Esc to exit, F9 toggle")
+	} else if !app.mini && !app.visualOnly {
+		procSetTextColor.Call(hdc, palette.dim)
+		statusLine := app.displayStatus()
+		hasMeta := app.meta.Title != ""
+		if hasMeta {
+			metaLine := fmt.Sprintf("%s — %s", app.meta.Title, app.meta.Artist)
+			if line := app.currentLyric(); line != "" {
+				metaLine += " | " + line
+			}
+			textOut(hdc, chrome.marginL, chrome.metaY, metaLine)
+			if chrome.metaY != chrome.statusY {
+				textOut(hdc, chrome.marginL, chrome.statusY, statusLine)
+			}
 		} else {
-			drawWithEffects(hdc, visualBounds, app.currentBars, app.ultra.peakBars(), app.ultra.trailFrames(), app.mode)
+			textOut(hdc, chrome.marginL, chrome.statusY, statusLine)
 		}
-	} else if app.modeBlend < 1 && app.prevMode != app.mode {
-		drawVisualizationBlend(hdc, visualBounds, app.currentBars, app.prevMode, app.mode, app.modeBlend)
-	} else {
-		drawVisualization(hdc, visualBounds, app.currentBars, app.mode)
+		if chrome.showHints {
+			textOut(hdc, chrome.marginL, height-30, "F8 UI style | F9 cinema | 1 OBS | 3 settings | V viz")
+		}
+		drawButtons(hdc, width, height, palette, chrome)
+		if chrome.showVolume {
+			app.drawVolumeSlider(hdc, width, palette, chrome)
+		}
+		drawPlaylist(hdc, width, height, palette, chrome)
+		app.drawSettingsPanel(hdc, width, height, palette, chrome)
+	}
+	if line := app.karaokeLine(); line != "" && !app.visualOnly {
+		procSetTextColor.Call(hdc, palette.accent2)
+		textOut(hdc, chrome.marginL, height-52, line)
+	}
+	if !app.visualOnly {
+		drawProgress(hdc, width, palette, chrome)
 	}
 }
 
@@ -2635,6 +2647,7 @@ func escapeMCI(path string) string {
 
 func invalidate() {
 	if app.hwnd != 0 {
+		app.uiDirty = true
 		procInvalidateRect.Call(app.hwnd, 0, 0)
 	}
 }

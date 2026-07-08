@@ -17,7 +17,6 @@ func init() {
 func (s *appState) flashStatus(msg string, d time.Duration) {
 	s.statusFlash = msg
 	s.statusFlashUntil = time.Now().Add(d)
-	s.status = msg
 	invalidate()
 }
 
