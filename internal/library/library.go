@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/armanster111/music-visualizer/internal/metadata"
+	"github.com/armanster111/muse/internal/metadata"
 )
 
 var audioExtensions = map[string]bool{

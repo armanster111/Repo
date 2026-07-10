@@ -5,8 +5,8 @@ package main
 import (
 	"time"
 
-	"github.com/armanster111/music-visualizer/internal/analysis"
-	"github.com/armanster111/music-visualizer/internal/lyrics"
+	"github.com/armanster111/muse/internal/analysis"
+	"github.com/armanster111/muse/internal/lyrics"
 )
 
 func (s *appState) fetchLyricsAsync() {

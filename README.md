@@ -1,13 +1,13 @@
-# Music Visualizer Ultra
+# Muse
 
 The most advanced standalone Windows music visualizer — **60 FPS**, **FFT spectrum analysis**, **19 visual modes**, cinema showcase, OBS overlay, library, lyrics, DJ mode, and LAN remote control. One `.exe`, no install.
 
 ## Download
 
-1. **[MusicVisualizerPro-Windows.zip](https://github.com/armanster111/Repo/raw/cursor/music-visualizer-exe-7b99/dist/MusicVisualizerPro-Windows.zip)**
-2. Extract → double-click **`MusicVisualizerPro.exe`**
+1. **[Muse-Windows.zip](https://github.com/armanster111/muse/releases/latest/download/Muse-Windows.zip)**
+2. Extract → double-click **`Muse.exe`**
 
-Direct EXE: https://github.com/armanster111/Repo/raw/cursor/music-visualizer-exe-7b99/dist/MusicVisualizerPro.exe
+Direct EXE: https://github.com/armanster111/muse/releases/latest/download/Muse.exe
 
 ---
 
@@ -26,7 +26,7 @@ Direct EXE: https://github.com/armanster111/Repo/raw/cursor/music-visualizer-exe
 | **OBS overlay** | **1** — transparent topmost window for streamers |
 | **Online lyrics** | Auto-fetch + karaoke overlay |
 | **Music library** | Artist/album/top-played views with click-to-play |
-| **Presets & packs** | Save/share looks; drop JSON packs in `%APPDATA%\MusicVisualizerPro\packs\` |
+| **Presets & packs** | Save/share looks; drop JSON packs in `%APPDATA%\Muse\packs\` |
 | **DJ mode** | Dual-deck crossfader |
 | **Remote** | http://localhost:8765 |
 
@@ -59,7 +59,7 @@ Classic · Mirror · Blocks · Wave · Halo · Spectrum · Fire · Particles · 
 
 1. Press **F9** for cinema mode (looks incredible on stream)
 2. Press **1** for OBS overlay window
-3. Add Window Capture in OBS → pick "Music Visualizer Overlay"
+3. Add Window Capture in OBS → pick "Muse Overlay"
 
 ---
 

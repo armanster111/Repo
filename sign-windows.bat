@@ -1,8 +1,8 @@
 @echo off
-REM Optional Authenticode signing for MusicVisualizerPro.exe
+REM Optional Authenticode signing for Muse.exe
 REM Requires Windows SDK signtool and a valid .pfx certificate.
 
-set "TARGET=dist\MusicVisualizerPro.exe"
+set "TARGET=dist\Muse.exe"
 if not exist "%TARGET%" (
   echo Build first: build-windows.bat or scripts\package-windows.sh
   exit /b 1

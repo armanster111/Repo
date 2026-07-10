@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/armanster111/music-visualizer/internal/visual"
+	"github.com/armanster111/muse/internal/visual"
 )
 
 var preloadMu sync.Mutex

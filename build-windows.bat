@@ -1,13 +1,13 @@
 @echo off
 setlocal
 
-title Build Music Visualizer Pro (developers)
+title Build Muse (developers)
 
 where go >nul 2>nul
 if errorlevel 1 (
   echo Go is not installed.
   echo.
-  echo Most users should download the prebuilt MusicVisualizerPro.exe instead of building.
+  echo Most users should download the prebuilt Muse.exe instead of building.
   echo Developers can install Go from https://go.dev/dl/ or let this script install it with winget.
   echo.
   choice /C YN /M "Install Go now"
@@ -44,15 +44,15 @@ if errorlevel 1 (
 if not exist dist mkdir dist
 set GOOS=windows
 set GOARCH=amd64
-go build -trimpath -ldflags="-s -w -H windowsgui" -o dist\MusicVisualizerPro.exe .\cmd\music-visualizer
+go build -trimpath -ldflags="-s -w -H windowsgui" -o dist\Muse.exe .\cmd\muse
 if errorlevel 1 (
   echo Build failed.
   pause
   exit /b 1
 )
 
-echo Built dist\MusicVisualizerPro.exe
+echo Built dist\Muse.exe
 echo.
-choice /C YN /M "Open Music Visualizer Pro now"
-if not errorlevel 2 start "" "dist\MusicVisualizerPro.exe"
+choice /C YN /M "Open Muse now"
+if not errorlevel 2 start "" "dist\Muse.exe"
 pause

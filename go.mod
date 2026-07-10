@@ -1,4 +1,4 @@
-module github.com/armanster111/music-visualizer
+module github.com/armanster111/muse
 
 go 1.23.2
 

@@ -11,7 +11,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/armanster111/music-visualizer/internal/visual"
+	"github.com/armanster111/muse/internal/visual"
 )
 
 const (
@@ -87,8 +87,8 @@ func (s *appState) openOverlay() {
 		return
 	}
 	instance, _, _ := procGetModuleHandleW.Call(0)
-	className, _ := syscall.UTF16PtrFromString("MusicVisualizerOverlay")
-	title, _ := syscall.UTF16PtrFromString("Music Visualizer Overlay")
+	className, _ := syscall.UTF16PtrFromString("MuseOverlay")
+	title, _ := syscall.UTF16PtrFromString("Muse Overlay")
 	wc := wndClassEx{
 		size:      uint32(unsafe.Sizeof(wndClassEx{})),
 		wndProc:   syscall.NewCallback(overlayWndProc),
@@ -235,7 +235,7 @@ func (s *appState) finishGifRecord() {
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		dir = home
 	}
-	path := filepath.Join(dir, fmt.Sprintf("music-visualizer-%s.gif", time.Now().Format("20060102-150405")))
+	path := filepath.Join(dir, fmt.Sprintf("muse-%s.gif", time.Now().Format("20060102-150405")))
 	delay := time.Second / time.Duration(fps)
 	if err := visual.EncodeGIF(path, frames, delay); err != nil {
 		s.flashStatus("GIF export failed: "+err.Error(), 3*time.Second)

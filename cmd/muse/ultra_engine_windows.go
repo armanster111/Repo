@@ -6,8 +6,8 @@ import (
 	"math"
 	"time"
 
-	"github.com/armanster111/music-visualizer/internal/metadata"
-	"github.com/armanster111/music-visualizer/internal/visual"
+	"github.com/armanster111/muse/internal/metadata"
+	"github.com/armanster111/muse/internal/visual"
 )
 
 type ultraEngine struct {

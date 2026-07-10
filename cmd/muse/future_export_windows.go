@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/armanster111/music-visualizer/internal/visual"
+	"github.com/armanster111/muse/internal/visual"
 )
 
 func (s *appState) toggleMp4Record() {
@@ -57,7 +57,7 @@ func (s *appState) finishVideoRecord() {
 	if info, err := os.Stat(outDir); err != nil || !info.IsDir() {
 		outDir = home
 	}
-	outPath := filepath.Join(outDir, fmt.Sprintf("music-visualizer-%s.avi", time.Now().Format("20060102-150405")))
+	outPath := filepath.Join(outDir, fmt.Sprintf("muse-%s.avi", time.Now().Format("20060102-150405")))
 	if err := visual.EncodeMJPEGAVI(outPath, frames, fps); err != nil {
 		s.flashStatus("Video export failed: "+err.Error(), 3*time.Second)
 		return

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/armanster111/music-visualizer/internal/library"
+	"github.com/armanster111/muse/internal/library"
 )
 
 func (s *appState) defaultLibraryRoots() []string {

@@ -10,11 +10,11 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/armanster111/music-visualizer/internal/audio"
-	"github.com/armanster111/music-visualizer/internal/lyrics"
-	"github.com/armanster111/music-visualizer/internal/metadata"
-	"github.com/armanster111/music-visualizer/internal/visual"
-	"github.com/armanster111/music-visualizer/internal/wav"
+	"github.com/armanster111/muse/internal/audio"
+	"github.com/armanster111/muse/internal/lyrics"
+	"github.com/armanster111/muse/internal/metadata"
+	"github.com/armanster111/muse/internal/visual"
+	"github.com/armanster111/muse/internal/wav"
 )
 
 type panelView int
@@ -259,7 +259,7 @@ func (s *appState) showOnboardingIfNeeded() {
 	s.seenOnboarding = true
 	s.saveSettings()
 	showMessage(s.hwnd, appTitle+" Pro",
-		"Welcome to Music Visualizer Pro v2!\n\nLibrary scan starts automatically.\n1 OBS overlay | 3 settings | 7 rescan library\n8 cycle preset | 9 save preset | 6 party mode\nRemote control: http://localhost:8765\n\nO open | I desktop | V viz | Z visual-only",
+		"Welcome to Muse v2!\n\nLibrary scan starts automatically.\n1 OBS overlay | 3 settings | 7 rescan library\n8 cycle preset | 9 save preset | 6 party mode\nRemote control: http://localhost:8765\n\nO open | I desktop | V viz | Z visual-only",
 		0)
 }
 
@@ -397,7 +397,7 @@ func installToLocalAppData() error {
 	if err != nil {
 		return err
 	}
-	target := filepath.Join(home, "AppData", "Local", "MusicVisualizerPro")
+	target := filepath.Join(home, "AppData", "Local", "Muse")
 	_ = os.MkdirAll(target, 0755)
 	exe, err := os.Executable()
 	if err != nil {
@@ -407,7 +407,7 @@ func installToLocalAppData() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(target, "MusicVisualizerPro.exe"), data, 0755)
+	return os.WriteFile(filepath.Join(target, "Muse.exe"), data, 0755)
 }
 
 type winRect struct {

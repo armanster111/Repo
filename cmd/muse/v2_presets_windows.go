@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/armanster111/music-visualizer/internal/presets"
+	"github.com/armanster111/muse/internal/presets"
 )
 
 func presetsPath() string {
@@ -104,7 +104,7 @@ func (s *appState) applyPreset(p presets.Preset) {
 
 func (s *appState) exportPresets() {
 	home, _ := os.UserHomeDir()
-	path := filepath.Join(home, "Desktop", "music-visualizer-presets.json")
+	path := filepath.Join(home, "Desktop", "muse-presets.json")
 	if err := presets.Save(path, s.presetsList()); err != nil {
 		s.status = "Preset export failed: " + err.Error()
 	} else {
@@ -115,7 +115,7 @@ func (s *appState) exportPresets() {
 
 func (s *appState) importPresets() {
 	home, _ := os.UserHomeDir()
-	path := filepath.Join(home, "Desktop", "music-visualizer-presets.json")
+	path := filepath.Join(home, "Desktop", "muse-presets.json")
 	list, err := presets.Load(path)
 	if err != nil {
 		s.status = "Preset import failed: " + err.Error()

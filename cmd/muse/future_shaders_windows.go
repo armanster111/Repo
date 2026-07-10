@@ -5,7 +5,7 @@ package main
 import (
 	"unsafe"
 
-	"github.com/armanster111/music-visualizer/internal/visual"
+	"github.com/armanster111/muse/internal/visual"
 )
 
 const (

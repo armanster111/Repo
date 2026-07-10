@@ -56,10 +56,10 @@ func (s *appState) startRemoteControl() {
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		st := s.remoteSnapshot()
-		fmt.Fprintf(w, `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Music Visualizer Remote</title>
+		fmt.Fprintf(w, `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Muse Remote</title>
 <style>body{font-family:Segoe UI,sans-serif;background:#120a22;color:#fff;padding:24px}
 button{margin:6px;padding:10px 16px;font-size:16px}</style></head><body>
-<h1>Music Visualizer Pro Remote</h1>
+<h1>Muse Remote</h1>
 <p><b>%s</b> — %s</p>
 <p>%s | Mood: %s | BPM: %.0f</p>
 <button onclick="fetch('/api/prev',{method:'POST'})">Prev</button>
@@ -100,7 +100,7 @@ func (s *appState) remoteSnapshot() remoteState {
 
 func (s *appState) exportSyncBundle() {
 	home, _ := os.UserHomeDir()
-	path := filepath.Join(home, "Desktop", "music-visualizer-sync.json")
+	path := filepath.Join(home, "Desktop", "muse-sync.json")
 	type bundle struct {
 		Favorites []string          `json:"favorites"`
 		Presets   []presetData      `json:"presets"`

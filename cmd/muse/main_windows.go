@@ -16,15 +16,15 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
-	"github.com/armanster111/music-visualizer/internal/library"
-	"github.com/armanster111/music-visualizer/internal/lyrics"
-	"github.com/armanster111/music-visualizer/internal/metadata"
-	"github.com/armanster111/music-visualizer/internal/presets"
-	"github.com/armanster111/music-visualizer/internal/visual"
+	"github.com/armanster111/muse/internal/library"
+	"github.com/armanster111/muse/internal/lyrics"
+	"github.com/armanster111/muse/internal/metadata"
+	"github.com/armanster111/muse/internal/presets"
+	"github.com/armanster111/muse/internal/visual"
 )
 
 const (
-	appTitle = "Music Visualizer"
+	appTitle = "Muse"
 	fps      = 60
 	barCount = 64
 
@@ -482,7 +482,7 @@ func run() error {
 	app.initV2Features()
 
 	instance, _, _ := procGetModuleHandleW.Call(0)
-	className, _ := syscall.UTF16PtrFromString("MusicVisualizerWindow")
+	className, _ := syscall.UTF16PtrFromString("MuseWindow")
 	title, _ := syscall.UTF16PtrFromString(appTitle)
 	cursor, _, _ := procLoadCursorW.Call(0, idcArrow)
 
@@ -1034,7 +1034,7 @@ func (s *appState) exportSnapshot() {
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
 		dir = home
 	}
-	name := fmt.Sprintf("music-visualizer-%s.ppm", time.Now().Format("20060102-150405"))
+	name := fmt.Sprintf("muse-%s.ppm", time.Now().Format("20060102-150405"))
 	path := filepath.Join(dir, name)
 	if err := writeSnapshot(path, bars, s.mode, s.theme); err != nil {
 		s.status = "Snapshot failed: " + err.Error()
@@ -2158,7 +2158,7 @@ func settingsPath() string {
 	if base == "" {
 		base = "."
 	}
-	return filepath.Join(base, "MusicVisualizerPro", "settings.json")
+	return filepath.Join(base, "Muse", "settings.json")
 }
 
 type palette struct {
